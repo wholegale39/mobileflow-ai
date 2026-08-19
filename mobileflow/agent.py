@@ -1,9 +1,10 @@
-"""Agent 主循环 —— 截图/UI树 → GLM-5.2 决策 → Appium 执行 → 验证。
+"""Agent 主循环 —— UI树(page source) → GLM-5.2 决策 → Appium 执行 → 验证。
 
-循环直到：done 动作 / 最大步数 / 连续重试超限。
+循环直到：done 动作 / 最大步数 / 连续重试超限（UI 停滞检测）。
 """
 from __future__ import annotations
 
+import hashlib
 import time
 from typing import Any
 
@@ -19,12 +20,15 @@ class Agent:
         driver: MobileDriver | DryDriver,
         max_steps: int = 20,
         settle_wait: float = 1.5,
+        stuck_threshold: int = 3,
     ) -> None:
         self.llm = llm
         self.driver = driver
         self.max_steps = max_steps
         self.settle_wait = settle_wait
+        self.stuck_threshold = stuck_threshold  # 同一 UI 连续出现 N 次判定停滞
         self.history: list[str] = []
+        self._last_ui_hash: str | None = None
         self._same_state_streak = 0
 
     def run(self, task: str) -> dict[str, Any]:
@@ -34,8 +38,28 @@ class Agent:
             ui_text = compress_page_source(self.driver.page_source())
             print(f"\n—— 第 {step} 步 ——")
 
+            # UI 停滞检测：同一界面连续 N 次 → 提前终止，避免空转
+            ui_hash = hashlib.md5(ui_text.encode()).hexdigest()
+            if ui_hash == self._last_ui_hash:
+                self._same_state_streak += 1
+            else:
+                self._same_state_streak = 0
+                self._last_ui_hash = ui_hash
+            if self._same_state_streak >= self.stuck_threshold:
+                return {
+                    "status": "stuck",
+                    "steps": step,
+                    "summary": f"UI 连续 {self.stuck_threshold} 步无变化，判定停滞",
+                }
+
             action = self.llm.decide_action(ui_text, task, self.history)
-            result = self.driver.execute_action(action)
+            if not isinstance(action, dict) or not action.get("action"):
+                raise ValueError(f"LLM 返回非法动作: {action!r}")
+
+            try:
+                result = self.driver.execute_action(action)
+            except Exception as e:  # 执行异常 → 记录并让 LLM 下一步调整
+                result = f"⚠️ 执行失败: {e}"
             print(f"决策: {action}")
             print(f"执行: {result}")
 
