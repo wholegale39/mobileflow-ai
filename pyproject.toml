@@ -1,0 +1,19 @@
+[project]
+name = "mobileflow-ai"
+version = "0.1.0"
+description = "Appium 封装的 LLM 驱动移动端自动化框架（GLM-5.2 决策脑）"
+requires-python = ">=3.10"
+dependencies = [
+    "appium-python-client>=4.0.0",
+    "openai>=1.40.0",
+]
+
+[project.scripts]
+mobileflow = "mobileflow.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["mobileflow"]
