@@ -41,8 +41,12 @@ def stream_chat(system: str, user: str, max_tokens: int = 4000) -> str:
     payload = {
         "model": MODEL,
         "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
+            {
+                # agnes 对独立 system 角色顺序敏感（偶发 400 System message must be at the beginning），
+                # 评审指令并入 user 消息最稳
+                "role": "user",
+                "content": f"{system}\n\n{user}",
+            }
         ],
         "reasoning_effort": "none",  # pro 思考模式长响应会断连，直出才稳
         "max_tokens": max_tokens,

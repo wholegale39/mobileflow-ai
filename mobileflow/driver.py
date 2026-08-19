@@ -22,6 +22,13 @@ class MobileDriver:
     def page_source(self) -> str:
         return self.driver.page_source
 
+    def screenshot_b64(self) -> str | None:
+        """截图 base64（视觉通道用），失败返回 None。"""
+        try:
+            return self.driver.get_screenshot_as_base64()
+        except Exception:
+            return None
+
     def execute_action(self, action: dict[str, Any]) -> str:
         """执行一个动作 JSON，返回结果描述。"""
         act = action.get("action", "")
