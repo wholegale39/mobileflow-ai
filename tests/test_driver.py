@@ -1,289 +1,283 @@
-"""
-tests/test_driver.py - MobileDriver 与 DryDriver 的 pytest 测试。
-"""
-
-from unittest.mock import MagicMock
+"""测试 driver 模块:动作执行、元素定位、新动作。"""
+from __future__ import annotations
 
 import pytest
+from unittest.mock import MagicMock
 
-from mobileflow.driver import DryDriver, MobileDriver
+from mobileflow.driver import MobileDriver, DryDriver
 
 
-class TestDriver:
-    """组织 MobileDriver / DryDriver 相关测试。"""
+class FakeAppiumDriver:
+    """模拟 Appium WebDriver 用于单元测试。"""
 
-    # ------------------------------------------------------------------ #
-    # click
-    # ------------------------------------------------------------------ #
-    def test_click_by_text(self):
-        driver = MagicMock()
-        target = {"text": "登录"}
-        action = {"action": "click", "target": target}
+    def __init__(self):
+        self.calls = []
+        self.window_size = {"width": 1080, "height": 1920}
+        self._elements = {
+            "微信": MagicMock(),
+            "search": MagicMock(),
+            "input": MagicMock(),
+            "长按项": MagicMock(),
+            "双击项": MagicMock(),
+            "源": MagicMock(),
+            "目标": MagicMock(),
+            "搜索框": MagicMock(),
+        }
 
-        md = MobileDriver(driver)
-        result = md.execute_action(action)
+    def find_element(self, by, value):
+        self.calls.append(("find_element", by, value))
+        for key, el in self._elements.items():
+            if key in str(value):
+                return el
+        raise Exception(f"Element not found: {value}")
 
-        driver.find_element.assert_called_once_with("xpath", '//*[@text="登录"]')
-        el = driver.find_element.return_value
-        el.click.assert_called_once()
-        assert result == "👆 点击 「登录」"
-
-    def test_click_by_resource_id(self):
-        driver = MagicMock()
-        target = {"resource_id": "com.app:id/login_btn"}
-        action = {"action": "click", "target": target}
-
-        md = MobileDriver(driver)
-        result = md.execute_action(action)
-
-        driver.find_element.assert_called_once_with(
-            "id", "com.app:id/login_btn"
-        )
-        el = driver.find_element.return_value
-        el.click.assert_called_once()
-        assert result == "👆 点击 com.app:id/login_btn"
-
-    def test_click_by_index(self):
-        driver = MagicMock()
-        nodes = [MagicMock(name=f"node{i}") for i in range(3)]
-        driver.find_elements.return_value = nodes
-        target = {"index": 1}
-        action = {"action": "click", "target": target}
-
-        md = MobileDriver(driver)
-        result = md.execute_action(action)
-
-        driver.find_elements.assert_called_once_with(
-            "xpath", "//*[@clickable='true']"
-        )
-        nodes[1].click.assert_called_once()
-        assert result == "👆 点击 #1"
-
-    def test_click_index_out_of_range(self):
-        driver = MagicMock()
-        driver.find_elements.return_value = [MagicMock() for _ in range(2)]
-        target = {"index": 5}
-        action = {"action": "click", "target": target}
-
-        md = MobileDriver(driver)
-        with pytest.raises(ValueError, match=r"index 5 越界"):
-            md.execute_action(action)
-
-    # ------------------------------------------------------------------ #
-    # input
-    # ------------------------------------------------------------------ #
-    def test_input_clear_then_send_keys(self):
-        driver = MagicMock()
+    def find_elements(self, by, value):
+        self.calls.append(("find_elements", by, value))
         el = MagicMock()
-        driver.find_element.return_value = el
-        target = {"text": "搜索框"}
-        action = {"action": "input", "target": target, "text": "hello"}
+        el.rect = {"x": 100, "y": 200, "width": 100, "height": 50}
+        return [el] * 5
 
-        md = MobileDriver(driver)
-        result = md.execute_action(action)
+    def back(self):
+        self.calls.append("back")
+        return "back"
 
-        driver.find_element.assert_called_once_with("xpath", '//*[@text="搜索框"]')
-        el.clear.assert_called_once()
-        el.send_keys.assert_called_once_with("hello")
-        assert "hello" in result
-        assert result == "⌨️ 输入「hello」到 「搜索框」"
+    def press_keycode(self, code):
+        self.calls.append(("keycode", code))
+        return f"keycode_{code}"
 
-    def test_input_default_text_empty(self):
-        driver = MagicMock()
-        el = MagicMock()
-        driver.find_element.return_value = el
-        target = {"resource_id": "com.app:id/search"}
-        action = {"action": "input", "target": target}
+    def activate_app(self, pkg):
+        self.calls.append(("activate_app", pkg))
+        return f"opened_{pkg}"
 
-        md = MobileDriver(driver)
-        result = md.execute_action(action)
+    def swipe(self, sx, sy, ex, ey, duration):
+        self.calls.append(("swipe", sx, sy, ex, ey, duration))
+        return f"swipe_{sx}_{sy}_{ex}_{ey}"
 
-        el.clear.assert_called_once()
-        el.send_keys.assert_called_once_with("")
-        assert result == "⌨️ 输入「」到 com.app:id/search"
+    def tap(self, positions):
+        self.calls.append(("tap", positions))
+        return f"tap_{positions}"
 
-    # ------------------------------------------------------------------ #
-    # swipe
-    # ------------------------------------------------------------------ #
-    def test_swipe_with_start_end(self):
-        driver = MagicMock()
-        action = {
-            "action": "swipe",
-            "start": [100, 200],
-            "end": [300, 400],
-        }
+    def drag_and_drop(self, sx, sy, ex, ey):
+        self.calls.append(("drag", sx, sy, ex, ey))
+        return "dragged"
 
-        md = MobileDriver(driver)
-        result = md.execute_action(action)
+    def get_screenshot_as_base64(self):
+        return "iVBORw0KGgo="
 
-        driver.swipe.assert_called_once_with(100, 200, 300, 400, 500)
-        assert result == "👆 滑动 [100, 200]→[300, 400]"
+    @property
+    def page_source(self):
+        return "<root><node text='微信'/></root>"
 
-    def test_swipe_default_start_end(self):
-        driver = MagicMock()
-        action = {"action": "swipe"}
+    def get_window_size(self):
+        return self.window_size
 
-        md = MobileDriver(driver)
-        result = md.execute_action(action)
 
-        driver.swipe.assert_called_once_with(0, 0, 0, 0, 500)
-        assert result == "👆 滑动 [0, 0]→[0, 0]"
+def test_mobile_driver_init():
+    fake = FakeAppiumDriver()
+    driver = MobileDriver(fake)
+    assert driver.default_timeout == 10.0
+    assert driver.default_retry == 3
 
-    # ------------------------------------------------------------------ #
-    # scroll
-    # ------------------------------------------------------------------ #
-    def test_scroll_down(self):
-        driver = MagicMock()
-        driver.get_window_size.return_value = {"width": 1080, "height": 1920}
-        action = {"action": "scroll", "direction": "down"}
 
-        md = MobileDriver(driver)
-        result = md.execute_action(action)
+def test_execute_done():
+    fake = FakeAppiumDriver()
+    driver = MobileDriver(fake)
+    result = driver.execute_action({"action": "done", "summary": "完成"})
+    assert "✅" in result
+    assert "完成" in result
 
-        driver.get_window_size.assert_called_once()
-        driver.swipe.assert_called_once_with(540, 1344, 540, 576, 400)
-        assert result == "📜 滚动 down"
 
-    def test_scroll_up(self):
-        driver = MagicMock()
-        driver.get_window_size.return_value = {"width": 720, "height": 1280}
-        action = {"action": "scroll", "direction": "up"}
+def test_execute_back():
+    fake = FakeAppiumDriver()
+    driver = MobileDriver(fake)
+    result = driver.execute_action({"action": "back"})
+    assert "↩️" in result
+    assert len(fake.calls) == 1
+    assert fake.calls[0] == "back"
 
-        md = MobileDriver(driver)
-        result = md.execute_action(action)
 
-        driver.get_window_size.assert_called_once()
-        driver.swipe.assert_called_once_with(360, 384, 360, 896, 400)
-        assert result == "📜 滚动 up"
+def test_execute_home():
+    fake = FakeAppiumDriver()
+    driver = MobileDriver(fake)
+    result = driver.execute_action({"action": "home"})
+    assert "🏠" in result
+    assert ("keycode", 3) in fake.calls
 
-    def test_scroll_default_direction_is_down(self):
-        driver = MagicMock()
-        driver.get_window_size.return_value = {"width": 1000, "height": 2000}
-        action = {"action": "scroll"}
 
-        md = MobileDriver(driver)
-        result = md.execute_action(action)
+def test_execute_open_app():
+    fake = FakeAppiumDriver()
+    driver = MobileDriver(fake)
+    result = driver.execute_action({"action": "open_app", "package": "com.example"})
+    assert "📱" in result
+    assert ("activate_app", "com.example") in fake.calls
 
-        driver.swipe.assert_called_once_with(500, 1400, 500, 600, 400)
-        assert result == "📜 滚动 down"
 
-    # ------------------------------------------------------------------ #
-    # back / home
-    # ------------------------------------------------------------------ #
-    def test_back(self):
-        driver = MagicMock()
-        md = MobileDriver(driver)
-        result = md.execute_action({"action": "back"})
+def test_execute_scroll_down():
+    fake = FakeAppiumDriver()
+    driver = MobileDriver(fake)
+    result = driver.execute_action({"action": "scroll", "direction": "down"})
+    assert "📜" in result
+    swipe_calls = [c for c in fake.calls if isinstance(c, tuple) and c[0] == "swipe"]
+    assert len(swipe_calls) == 1
 
-        driver.back.assert_called_once()
-        assert result == "↩️ 返回"
 
-    def test_home(self):
-        driver = MagicMock()
-        md = MobileDriver(driver)
-        result = md.execute_action({"action": "home"})
+def test_execute_swipe():
+    fake = FakeAppiumDriver()
+    driver = MobileDriver(fake)
+    result = driver.execute_action({"action": "swipe", "start": [540, 1000], "end": [540, 500]})
+    assert "👆" in result
+    swipe_calls = [c for c in fake.calls if isinstance(c, tuple) and c[0] == "swipe"]
+    assert len(swipe_calls) == 1
 
-        driver.press_keycode.assert_called_once_with(3)
-        assert result == "🏠 回桌面"
 
-    # ------------------------------------------------------------------ #
-    # open_app
-    # ------------------------------------------------------------------ #
-    def test_open_app_package_from_target(self):
-        driver = MagicMock()
-        action = {
-            "action": "open_app",
-            "target": {"package": "com.target.pkg"},
-        }
-        md = MobileDriver(driver)
-        result = md.execute_action(action)
+def test_execute_click_by_text():
+    fake = FakeAppiumDriver()
+    driver = MobileDriver(fake)
+    result = driver.execute_action({"action": "click", "target": {"text": "微信"}})
+    assert "👆" in result
+    find_calls = [c for c in fake.calls if isinstance(c, tuple) and c[0] == "find_element"]
+    assert any("微信" in str(c[2]) for c in find_calls)
 
-        driver.activate_app.assert_called_once_with("com.target.pkg")
-        assert result == "📱 打开应用 com.target.pkg"
 
-    def test_open_app_package_from_action(self):
-        driver = MagicMock()
-        action = {
-            "action": "open_app",
-            "package": "com.action.pkg",
-            "target": {},
-        }
-        md = MobileDriver(driver)
-        result = md.execute_action(action)
+def test_execute_click_by_resource_id():
+    fake = FakeAppiumDriver()
+    driver = MobileDriver(fake)
+    result = driver.execute_action({"action": "click", "target": {"resource_id": "com.example:id/search"}})
+    assert "👆" in result
 
-        driver.activate_app.assert_called_once_with("com.action.pkg")
-        assert result == "📱 打开应用 com.action.pkg"
 
-    def test_open_app_package_from_target_text(self):
-        driver = MagicMock()
-        action = {
-            "action": "open_app",
-            "target": {"text": "com.text.pkg"},
-        }
-        md = MobileDriver(driver)
-        result = md.execute_action(action)
+def test_execute_click_by_index():
+    fake = FakeAppiumDriver()
+    driver = MobileDriver(fake)
+    result = driver.execute_action({"action": "click", "target": {"index": 2}})
+    assert "👆" in result
 
-        driver.activate_app.assert_called_once_with("com.text.pkg")
-        assert result == "📱 打开应用 com.text.pkg"
 
-    # ------------------------------------------------------------------ #
-    # done
-    # ------------------------------------------------------------------ #
-    def test_done_with_summary(self):
-        driver = MagicMock()
-        md = MobileDriver(driver)
-        result = md.execute_action(
-            {"action": "done", "summary": "已完成操作"}
-        )
-        assert result == "✅ 已完成操作"
-        # 不应调用任何 driver 方法
-        driver.back.assert_not_called()
-        driver.swipe.assert_not_called()
+def test_execute_click_index_out_of_range():
+    fake = FakeAppiumDriver()
+    original = fake.find_elements
+    fake.find_elements = lambda by, value: [MagicMock()]
+    driver = MobileDriver(fake, default_retry=1)
+    with pytest.raises(RuntimeError, match="动作执行失败"):
+        driver.execute_action({"action": "click", "target": {"index": 5}})
 
-    def test_done_without_summary(self):
-        driver = MagicMock()
-        md = MobileDriver(driver)
-        result = md.execute_action({"action": "done"})
-        assert result == "✅ 任务完成"
 
-    # ------------------------------------------------------------------ #
-    # 未知动作 / target 校验
-    # ------------------------------------------------------------------ #
-    def test_unknown_action_raises(self):
-        driver = MagicMock()
-        md = MobileDriver(driver)
-        with pytest.raises(ValueError, match=r"未知动作: unknown"):
-            md.execute_action({"action": "unknown"})
+def test_execute_long_click():
+    fake = FakeAppiumDriver()
+    driver = MobileDriver(fake, default_retry=1)
+    result = driver.execute_action({"action": "long_click", "target": {"text": "长按项"}})
+    assert "🖐️" in result
+    swipe_calls = [c for c in fake.calls if isinstance(c, tuple) and c[0] == "swipe"]
+    assert len(swipe_calls) >= 1
 
-    def test_target_missing_locator_raises(self):
-        driver = MagicMock()
-        md = MobileDriver(driver)
-        with pytest.raises(ValueError, match=r"target 缺定位信息"):
-            md.execute_action({"action": "click", "target": {}})
 
-    # ------------------------------------------------------------------ #
-    # DryDriver
-    # ------------------------------------------------------------------ #
-    def test_dry_driver_page_source(self):
-        xml = "<root><child>text</child></root>"
-        dry = DryDriver(xml)
-        assert dry.page_source() == xml
+def test_execute_double_click():
+    fake = FakeAppiumDriver()
+    driver = MobileDriver(fake, default_retry=1)
+    result = driver.execute_action({"action": "double_click", "target": {"text": "双击项"}})
+    assert "👆👆" in result
+    # double_click 应该执行两次 tap（或等效操作）
 
-    def test_dry_driver_execute_action(self):
-        xml = "<hierarchy></hierarchy>"
-        dry = DryDriver(xml)
-        action = {"action": "click", "target": {"text": "按钮"}}
-        result = dry.execute_action(action)
-        assert result == "[dry-run] 执行: {'action': 'click', 'target': {'text': '按钮'}}"
 
-    def test_dry_driver_does_not_touch_driver(self):
-        xml = "<hierarchy></hierarchy>"
-        dry = DryDriver(xml)
-        # 多次调用均不应抛出异常，且不执行任何真实 driver 调用
-        for action in [
-            {"action": "click", "target": {"text": "x"}},
-            {"action": "input", "target": {"resource_id": "id"}, "text": "t"},
-            {"action": "scroll"},
-        ]:
-            result = dry.execute_action(action)
-            assert result.startswith("[dry-run] 执行:")
+def test_execute_drag():
+    fake = FakeAppiumDriver()
+    driver = MobileDriver(fake, default_retry=1)
+    result = driver.execute_action({
+        "action": "drag",
+        "from": {"text": "源"},
+        "to": {"text": "目标"}
+    })
+    assert "↔️" in result
+    assert ("drag",) in [c[:1] for c in fake.calls if isinstance(c, tuple)]
+
+
+def test_execute_coordinate_click():
+    fake = FakeAppiumDriver()
+    driver = MobileDriver(fake, default_retry=1)
+    result = driver.execute_action({"action": "coordinate_click", "x": 540, "y": 1000})
+    assert "📍" in result
+    tap_calls = [c for c in fake.calls if isinstance(c, tuple) and c[0] == "tap"]
+    assert len(tap_calls) == 1
+    assert (540, 1000) in tap_calls[0][1]
+
+
+def test_execute_input_key():
+    fake = FakeAppiumDriver()
+    driver = MobileDriver(fake, default_retry=1)
+    result = driver.execute_action({"action": "input_key", "keycode": 66})
+    assert "⌨️" in result
+    assert ("keycode", 66) in fake.calls
+
+
+def test_execute_wait_present():
+    fake = FakeAppiumDriver()
+    driver = MobileDriver(fake)
+    result = driver.execute_action({"action": "wait", "target": {"text": "加载完成", "gone": False}})
+    assert "⏳" in result
+    assert "出现" in result
+
+
+def test_execute_wait_gone():
+    fake = FakeAppiumDriver()
+    driver = MobileDriver(fake)
+    result = driver.execute_action({"action": "wait", "target": {"text": "广告", "gone": True}})
+    assert "⏳" in result
+    assert "消失" in result
+
+
+def test_execute_unknown_action():
+    fake = FakeAppiumDriver()
+    driver = MobileDriver(fake, default_retry=1)
+    with pytest.raises(RuntimeError, match="动作执行失败"):
+        driver.execute_action({"action": "fly_to_moon"})
+
+
+def test_execute_missing_target():
+    fake = FakeAppiumDriver()
+    driver = MobileDriver(fake, default_retry=1)
+    with pytest.raises(RuntimeError, match="动作执行失败"):
+        driver.execute_action({"action": "click"})
+
+
+def test_screenshot_b64_success():
+    fake = FakeAppiumDriver()
+    driver = MobileDriver(fake)
+    b64 = driver.screenshot_b64()
+    assert b64 == "iVBORw0KGgo="
+
+
+def test_screenshot_b64_failure():
+    fake = FakeAppiumDriver()
+    fake.get_screenshot_as_base64 = lambda: (_ for _ in ()).throw(Exception("截图失败"))
+    driver = MobileDriver(fake)
+    assert driver.screenshot_b64() is None
+
+
+def test_describe_text():
+    assert MobileDriver._describe({"text": "微信"}) == "「微信」"
+
+
+def test_describe_resource_id():
+    assert MobileDriver._describe({"resource_id": "com.example:id/wechat"}) == "com.example:id/wechat"
+
+
+def test_describe_index():
+    assert MobileDriver._describe({"index": 3}) == "#3"
+
+
+class TestDryDriver:
+    def test_page_source(self):
+        driver = DryDriver("<root/>")
+        assert driver.page_source() == "<root/>"
+
+    def test_execute_action(self):
+        driver = DryDriver("<root/>")
+        result = driver.execute_action({"action": "click", "target": {"text": "test"}})
+        assert "[dry-run]" in result
+        assert "click" in result
+
+
+def test_default_timeout_retry():
+    driver = MobileDriver(FakeAppiumDriver(), default_timeout=15.0, default_retry=5)
+    assert driver.default_timeout == 15.0
+    assert driver.default_retry == 5

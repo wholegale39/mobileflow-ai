@@ -1,7 +1,8 @@
 """Agent 主循环 —— 记忆回放 → 技能执行 → LLM 决策（含视觉通道/轨迹审计）。
 
-决策链优先级：稳定记忆链 > 技能库 > LLM 在线决策。
+决策链优先级：稳定记忆链 > 技能库 > LLM 在线决策 > 规划器。
 轨迹审计：每步写 JSONL（未来对接 agent-tracer 可观测性）。
+等待/重试：集成 wait_strategy 实现元素等待和动作重试。
 """
 from __future__ import annotations
 
@@ -111,7 +112,7 @@ class Agent:
 
             # 视觉通道（可选）：截图描述补充 UI 树
             vision_block = ""
-            if self.vision and hasattr(self.driver, "screenshot_b64"):
+            if self.vision and hasattr(self.driver, "screenshot_b64") and callable(getattr(self.driver, "screenshot_b64", None)):
                 b64 = self.driver.screenshot_b64()
                 if b64:
                     try:

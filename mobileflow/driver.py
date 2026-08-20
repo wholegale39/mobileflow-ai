@@ -2,22 +2,35 @@
 
 把 GLM-5.2 输出的 JSON 动作翻译成 Appium 调用：
 - click / input / swipe / scroll / back / home / open_app / done
-- 元素定位：text / resource_id / index 三种策略
+- long_click / double_click / drag / coordinate_click（新增）
+- 元素定位：text / resource_id / index / coordinate 四种策略
+- 等待策略集成（wait_until / retry_action）
 - 设备不可用时支持 DryDriver（--dry-run 验证决策链路）
 """
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from appium.webdriver.common.appiumby import AppiumBy
 from appium.webdriver.webdriver import WebDriver
 
+from mobileflow.wait_strategy import wait_until, retry_action
+
 
 class MobileDriver:
     """Appium WebDriver 封装。"""
 
-    def __init__(self, driver: WebDriver) -> None:
+    def __init__(
+        self,
+        driver: WebDriver,
+        *,
+        default_timeout: float = 10.0,
+        default_retry: int = 3,
+    ) -> None:
         self.driver = driver
+        self.default_timeout = default_timeout
+        self.default_retry = default_retry
 
     def page_source(self) -> str:
         return self.driver.page_source
@@ -30,40 +43,84 @@ class MobileDriver:
             return None
 
     def execute_action(self, action: dict[str, Any]) -> str:
-        """执行一个动作 JSON，返回结果描述。"""
+        """执行一个动作 JSON，返回结果描述。支持重试。"""
         act = action.get("action", "")
         target = action.get("target") or {}
+        max_attempts = action.get("retry", self.default_retry)
+        timeout = action.get("timeout", self.default_timeout)
 
-        if act == "done":
-            return f"✅ {action.get('summary', '任务完成')}"
-        if act == "back":
-            self.driver.back()
-            return "↩️ 返回"
-        if act == "home":
-            self.driver.press_keycode(3)  # KEYCODE_HOME
-            return "🏠 回桌面"
-        if act == "open_app":
-            pkg = target.get("package") or action.get("package") or target.get("text", "")
-            self.driver.activate_app(pkg)
-            return f"📱 打开应用 {pkg}"
-        if act == "scroll":
-            direction = action.get("direction", "down")
-            return self._scroll(direction)
-        if act == "swipe":
-            start, end = action.get("start", [0, 0]), action.get("end", [0, 0])
-            self.driver.swipe(start[0], start[1], end[0], end[1], 500)
-            return f"👆 滑动 {start}→{end}"
-        if act == "click":
-            el = self._find_element(target)
-            el.click()
-            return f"👆 点击 {self._describe(target)}"
-        if act == "input":
-            el = self._find_element(target)
-            text = action.get("text", "")
-            el.clear()
-            el.send_keys(text)
-            return f"⌨️ 输入「{text}」到 {self._describe(target)}"
-        raise ValueError(f"未知动作: {act}")
+        def _exec() -> str:
+            if act == "done":
+                return f"✅ {action.get('summary', '任务完成')}"
+            if act == "back":
+                self.driver.back()
+                return "↩️ 返回"
+            if act == "home":
+                self.driver.press_keycode(3)  # KEYCODE_HOME
+                return "🏠 回桌面"
+            if act == "open_app":
+                pkg = target.get("package") or action.get("package") or target.get("text", "")
+                self.driver.activate_app(pkg)
+                return f"📱 打开应用 {pkg}"
+            if act == "scroll":
+                direction = action.get("direction", "down")
+                return self._scroll(direction)
+            if act == "swipe":
+                start, end = action.get("start", [0, 0]), action.get("end", [0, 0])
+                self.driver.swipe(start[0], start[1], end[0], end[1], 500)
+                return f"👆 滑动 {start}→{end}"
+            if act == "click":
+                el = self._find_element(target)
+                el.click()
+                return f"👆 点击 {self._describe(target)}"
+            if act == "long_click":
+                el = self._find_element(target)
+                # 长按：从中心点向下滑动模拟
+                rect = el.rect
+                cx, cy = rect["x"] + rect["width"] // 2, rect["y"] + rect["height"] // 2
+                self.driver.swipe(cx, cy, cx, cy + 5, 1000)
+                return f"🖐️ 长按 {self._describe(target)}"
+            if act == "double_click":
+                el = self._find_element(target)
+                el.click()
+                time.sleep(0.1)
+                el.click()
+                return f"👆👆 双击 {self._describe(target)}"
+            if act == "drag":
+                start_el = self._find_element(action.get("from", {}))
+                end_el = self._find_element(action.get("to", {}))
+                s_rect, e_rect = start_el.rect, end_el.rect
+                sx, sy = s_rect["x"] + s_rect["width"] // 2, s_rect["y"] + s_rect["height"] // 2
+                ex, ey = e_rect["x"] + e_rect["width"] // 2, e_rect["y"] + e_rect["height"] // 2
+                self.driver.drag_and_drop(sx, sy, ex, ey)
+                return f"↔️ 拖动 {self._describe(action.get('from', {}))} → {self._describe(action.get('to', {}))}"
+            if act == "coordinate_click":
+                x, y = action.get("x", 0), action.get("y", 0)
+                self.driver.tap([(x, y)])
+                return f"📍 点击坐标 ({x}, {y})"
+            if act == "input":
+                el = self._find_element(target)
+                text = action.get("text", "")
+                el.clear()
+                el.send_keys(text)
+                return f"⌨️ 输入「{text}」到 {self._describe(target)}"
+            if act == "input_key":
+                keycode = action.get("keycode", 66)  # 默认 Enter
+                self.driver.press_keycode(int(keycode))
+                keyname = {66: "Enter", 4: "Back", 3: "Home"}.get(keycode, str(keycode))
+                return f"⌨️ 按键 {keyname}"
+            if act == "wait":
+                text = target.get("text")
+                resource_id = target.get("resource_id")
+                gone = target.get("gone", False)
+                if gone:
+                    ok = self._wait_gone(text, resource_id, timeout)
+                    return f"⏳ 等待元素消失 {'✓' if ok else '✗'}"
+                ok = self._wait_present(text, resource_id, timeout)
+                return f"⏳ 等待元素出现 {'✓' if ok else '✗'}"
+            raise ValueError(f"未知动作: {act}")
+
+        return retry_action(_exec, max_attempts=max_attempts, on_retry=lambda n, e: print(f"  ⚠️ 重试 {n}: {e}"))
 
     # ---------- 内部 ----------
 
@@ -96,6 +153,34 @@ class MobileDriver:
         else:
             self.driver.swipe(w // 2, int(h * 0.3), w // 2, int(h * 0.7), 400)
         return f"📜 滚动 {direction}"
+
+    def _wait_present(self, text: str | None, resource_id: str | None, timeout: float) -> bool:
+        def _present() -> bool:
+            try:
+                if text:
+                    self.driver.find_element(AppiumBy.XPATH, f'//*[@text="{text}"]')
+                    return True
+                if resource_id:
+                    self.driver.find_element(AppiumBy.ID, resource_id)
+                    return True
+            except Exception:
+                return False
+            return False
+        return wait_until(_present, timeout=timeout, desc=f"元素 {text or resource_id}")
+
+    def _wait_gone(self, text: str | None, resource_id: str | None, timeout: float) -> bool:
+        def _gone() -> bool:
+            try:
+                if text:
+                    self.driver.find_element(AppiumBy.XPATH, f'//*[@text="{text}"]')
+                    return False
+                if resource_id:
+                    self.driver.find_element(AppiumBy.ID, resource_id)
+                    return False
+            except Exception:
+                return True
+            return False
+        return wait_until(_gone, timeout=timeout, desc=f"元素 {text or resource_id} 消失")
 
 
 class DryDriver:

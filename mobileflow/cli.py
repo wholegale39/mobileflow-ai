@@ -9,6 +9,7 @@ from mobileflow.agent import Agent
 from mobileflow.driver import DryDriver, MobileDriver
 from mobileflow.llm import LlmClient
 from mobileflow.memory import MemoryEngine
+from mobileflow.planner import TaskPlanner
 from mobileflow.skills import SkillLibrary
 from mobileflow.vision import VisionChannel
 
@@ -37,27 +38,34 @@ def cmd_run(args: argparse.Namespace) -> None:
     print("⚠️ dry-run 模式：无真实设备，使用示例 UI 树" if args.dry_run else "")
     driver = build_driver(args.dry_run, args.appium_url, args.capabilities)
     llm = LlmClient()
-    agent = Agent(
-        llm, driver,
-        max_steps=args.max_steps,
-        memory=MemoryEngine() if not args.no_memory else None,
-        skills=SkillLibrary() if not args.no_skills else None,
-        vision=VisionChannel() if args.vision and not args.dry_run else None,
-        trace_path=args.trace,
-    )
-    try:
-        result = agent.run(args.task)
-    except KeyboardInterrupt:
-        print("\n🛑 已中断")
-        sys.exit(130)
 
-    print("\n📋 结果:", json.dumps(result, ensure_ascii=False))
-    if args.dry_run:
+    # 有 planner 时用规划器，否则用普通 Agent
+    if args.plan:
+        planner = TaskPlanner(
+            llm, driver,
+            max_steps_per_subtask=args.max_steps,
+            max_subtasks=args.max_subtasks,
+            trace_path=args.trace,
+        )
+        result = planner.run(args.task)
+    else:
+        agent = Agent(
+            llm, driver,
+            max_steps=args.max_steps,
+            memory=MemoryEngine() if not args.no_memory else None,
+            skills=SkillLibrary() if not args.no_skills else None,
+            vision=VisionChannel() if args.vision and not args.dry_run else None,
+            trace_path=args.trace,
+        )
+        result = agent.run(args.task)
+
+    print("\n📋 结果:", json.dumps(result, ensure_ascii=False, indent=1))
+    if args.dry_run and not args.plan:
         print("\n🧾 决策轨迹:")
         for i, h in enumerate(agent.history, 1):
             print(f"  {i}. {h}")
-    if agent.memory:
-        print("\n🧠 记忆:", json.dumps(agent.memory.stats(), ensure_ascii=False))
+    if not args.plan and hasattr(agent, 'memory') and agent.memory:
+        print("\n🧠 记忆:", json.dumps(agent.memory.stats(), ensure_ascii=False, indent=1))
 
 
 def cmd_skills(args: argparse.Namespace) -> None:
@@ -86,12 +94,14 @@ def main() -> None:
     run.add_argument("task", help='任务描述，如 "打开微信发消息"')
     run.add_argument("--dry-run", action="store_true", help="无设备，只验证 LLM 决策链路")
     run.add_argument("--appium-url", default="http://127.0.0.1:4723", help="Appium 服务地址")
-    run.add_argument("--max-steps", type=int, default=20)
+    run.add_argument("--max-steps", type=int, default=20, help="每个子任务最大步数")
+    run.add_argument("--max-subtasks", type=int, default=5, help="任务拆解最大子任务数")
     run.add_argument("--vision", action="store_true", help="开启截图多模态通道")
     run.add_argument("--no-memory", action="store_true", help="关闭记忆链")
     run.add_argument("--no-skills", action="store_true", help="关闭技能库")
     run.add_argument("--trace", default=None, help="轨迹审计输出路径（JSONL）")
     run.add_argument("--capabilities", default="{}", help='JSON 字符串，Android desired capabilities')
+    run.add_argument("--plan", action="store_true", help="启用任务规划器（拆解大任务为子任务链）")
     run.set_defaults(func=cmd_run)
 
     skills = sub.add_parser("skills", help="技能库管理")
