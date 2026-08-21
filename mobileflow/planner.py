@@ -78,6 +78,8 @@ class TaskPlanner:
         succeeded_indices: list[int] = []
         for idx, subtask in enumerate(subtasks):
             print(f"\n🚀 执行子任务 [{idx+1}/{len(subtasks)}]: {subtask}")
+            # 子任务切换：重置停滞检测，防止 streak 跨子任务连续误判
+            agent.reset_stuck()
             result = agent.run(subtask)
             result["subtask"] = subtask
             results.append(result)

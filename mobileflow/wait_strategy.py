@@ -10,10 +10,7 @@ from __future__ import annotations
 import time
 from typing import Any, Callable
 
-
-def _esc(text: str) -> str:
-    """转义 XPath 双引号内的文本（防注入/解析错误）。"""
-    return text.replace("\\", "\\\\").replace('"', '\\"').replace("'", "\\'")
+from mobileflow.utils import escape_xpath_text
 
 
 def wait_until(
@@ -54,7 +51,7 @@ def wait_until_gone(
     def _gone() -> bool:
         try:
             if text:
-                driver.find_element(AppiumBy.XPATH, f'//*[@text="{_esc(text)}"]')
+                driver.find_element(AppiumBy.XPATH, f'//*[@text="{escape_xpath_text(text)}"]')
                 return False
             if resource_id:
                 driver.find_element(AppiumBy.ID, resource_id)
@@ -80,7 +77,7 @@ def wait_until_present(
     def _present() -> bool:
         try:
             if text:
-                driver.find_element(AppiumBy.XPATH, f'//*[@text="{_esc(text)}"]')
+                driver.find_element(AppiumBy.XPATH, f'//*[@text="{escape_xpath_text(text)}"]')
                 return True
             if resource_id:
                 driver.find_element(AppiumBy.ID, resource_id)

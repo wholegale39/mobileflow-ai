@@ -150,6 +150,11 @@ class Agent:
     def _ui_hash(self) -> str:
         return hashlib.md5(self.driver.page_source().encode()).hexdigest()
 
+    def reset_stuck(self) -> None:
+        """重置停滞检测状态。子任务切换时调用，防止 streak 跨子任务连续误判。"""
+        self._same_state_streak = 0
+        self._last_ui_hash = None
+
     def _check_stuck(self, ui_text: str) -> bool:
         ui_hash = hashlib.md5(ui_text.encode()).hexdigest()
         if ui_hash == self._last_ui_hash:

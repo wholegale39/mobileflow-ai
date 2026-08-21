@@ -16,6 +16,7 @@ from appium.webdriver.common.appiumby import AppiumBy
 from appium.webdriver.webdriver import WebDriver
 
 from mobileflow.wait_strategy import wait_until, retry_action
+from mobileflow.utils import escape_xpath_text
 
 
 class MobileDriver:
@@ -133,14 +134,9 @@ class MobileDriver:
 
     # ---------- 内部 ----------
 
-    @staticmethod
-    def _esc(text: str) -> str:
-        """转义 XPath 双引号内的文本（防注入/解析错误）。"""
-        return text.replace("\\", "\\\\").replace('"', '\\"').replace("'", "\\'")
-
     def _find_element(self, target: dict[str, Any]):
         if target.get("text"):
-            return self.driver.find_element(AppiumBy.XPATH, f'//*[@text="{self._esc(target["text"])}"]')
+            return self.driver.find_element(AppiumBy.XPATH, f'//*[@text="{escape_xpath_text(target["text"])}"]')
         if target.get("resource_id"):
             return self.driver.find_element(AppiumBy.ID, target["resource_id"])
         if target.get("index") is not None:
@@ -172,7 +168,7 @@ class MobileDriver:
         def _present() -> bool:
             try:
                 if text:
-                    self.driver.find_element(AppiumBy.XPATH, f'//*[@text="{self._esc(text)}"]')
+                    self.driver.find_element(AppiumBy.XPATH, f'//*[@text="{escape_xpath_text(text)}"]')
                     return True
                 if resource_id:
                     self.driver.find_element(AppiumBy.ID, resource_id)
@@ -186,7 +182,7 @@ class MobileDriver:
         def _gone() -> bool:
             try:
                 if text:
-                    self.driver.find_element(AppiumBy.XPATH, f'//*[@text="{self._esc(text)}"]')
+                    self.driver.find_element(AppiumBy.XPATH, f'//*[@text="{escape_xpath_text(text)}"]')
                     return False
                 if resource_id:
                     self.driver.find_element(AppiumBy.ID, resource_id)
