@@ -101,6 +101,8 @@ class MobileDriver:
                 self.driver.press_keycode(int(keycode))
                 keyname = {66: "Enter", 4: "Back", 3: "Home"}.get(keycode, str(keycode))
                 return f"⌨️ 按键 {keyname}"
+            if act.startswith("assert_"):
+                return self._run_assert(action)
             if act == "wait":
                 text = target.get("text")
                 resource_id = target.get("resource_id")
@@ -176,6 +178,17 @@ class MobileDriver:
         return f"👁️👆 视觉点击「{name}」({x},{y}) [{target.get('type')}]"
 
     # ---------- 内部 ----------
+
+    def _run_assert(self, action: dict[str, Any]) -> str:
+        """断言族动作：只读校验，通过返回描述，失败抛错。"""
+        from mobileflow.assertion import AssertionFailed as _AE
+        from mobileflow.assertion import run_assert
+        try:
+            return run_assert(self.driver, action, vision=getattr(self, "_vision", None))
+        except _AE:
+            raise
+        except Exception as e:
+            raise RuntimeError(f"断言执行异常: {e}")
 
     def _find_element(self, target: dict[str, Any]):
         if target.get("text"):
