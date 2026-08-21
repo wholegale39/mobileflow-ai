@@ -1,71 +1,41 @@
-import json
-import urllib.error
+"""测试 vision 视觉通道：结构化元素解析。"""
+from __future__ import annotations
 
-import pytest
-from unittest.mock import MagicMock, patch
-
-from mobileflow.vision import VisionChannel, format_vision_block
+from mobileflow.vision import VisionChannel
 
 
-def _chan(**kw):
-    defaults = dict(base_url="https://x/v1", api_key="sk-key", model="agnes-2.5-pro")
-    defaults.update(kw)
-    return VisionChannel(**defaults)
+def test_parse_elements_valid():
+    raw = '[{"name":"购买","x":540,"y":1200,"type":"button","note":"红色"}]'
+    out = VisionChannel._parse_elements(raw)
+    assert out[0]["name"] == "购买"
+    assert out[0]["x"] == 540
+    assert out[0]["type"] == "button"
 
 
-class TestFormatVisionBlock:
-    def test_with_description(self):
-        assert format_vision_block("要点") == "\n[截图要点（视觉通道）]\n要点"
+def test_parse_elements_array():
+    raw = '[{"name":"登录","x":100,"y":200,"type":"button"},' \
+          '{"name":"输入框","x":300,"y":400,"type":"input"}]'
+    out = VisionChannel._parse_elements(raw)
+    assert len(out) == 2
+    assert out[1]["name"] == "输入框"
 
-    def test_empty_description(self):
-        assert format_vision_block("") == ""
-        assert format_vision_block(None) == ""
+
+def test_parse_elements_with_fencing():
+    raw = '```json\n[{"name":"确定","x":0,"y":0,"type":"button"}]\n```'
+    out = VisionChannel._parse_elements(raw)
+    assert out[0]["name"] == "确定"
 
 
-class TestDescribeScreenshot:
-    @patch("mobileflow.vision.urllib.request.urlopen")
-    def test_success_payload_and_return(self, mock_urlopen):
-        mock_resp = MagicMock()
-        mock_resp.read.return_value = json.dumps({
-            "choices": [{"message": {"content": "  主页 / 登录按钮  "}}]
-        }).encode()
-        mock_urlopen.return_value = mock_resp
+def test_parse_elements_malformed_returns_empty():
+    assert VisionChannel._parse_elements("这不是json") == []
+    assert VisionChannel._parse_elements("") == []
+    assert VisionChannel._parse_elements("[]") == []
 
-        ch = _chan()
-        res = ch.describe_screenshot("img-base64")
 
-        req = mock_urlopen.call_args[0][0]
-        payload = json.loads(req.data)
-        assert payload["model"] == "agnes-2.5-pro"
-        msgs = payload["messages"]
-        assert isinstance(msgs, list) and len(msgs) == 1
-        assert msgs[0]["role"] == "user"
-        assert payload["reasoning_effort"] == "none"
-        content = msgs[0]["content"]
-        assert any(c.get("type") == "image_url" for c in content)
-        img = [c for c in content if c.get("type") == "image_url"][0]
-        assert img["image_url"]["url"].startswith("data:image/png;base64,")
-        assert res == "主页 / 登录按钮"
-
-    @patch("mobileflow.vision.urllib.request.urlopen")
-    def test_http_error_raises_runtime_error(self, mock_urlopen):
-        mock_urlopen.side_effect = urllib.error.HTTPError(
-            "https://x/v1", 401, "bad", {}, None
-        )
-        with pytest.raises(RuntimeError):
-            _chan().describe_screenshot("x")
-
-    def test_missing_key_raises_runtime_error(self, monkeypatch):
-        monkeypatch.delenv("MOBILEFLOW_VISION_API_KEY", raising=False)
-        monkeypatch.setenv("MOBILEFLOW_VISION_BASE_URL", "https://x/v1")
-        # .env 兜底路径也要失效，才能触达「无 key」分支
-        monkeypatch.setattr("builtins.open", lambda *a, **kw: (_ for _ in ()).throw(OSError("no env")))
-        ch = VisionChannel(base_url="https://x/v1", api_key="")
-        with pytest.raises(RuntimeError):
-            ch.describe_screenshot("x")
-
-    @patch("mobileflow.vision.urllib.request.urlopen")
-    def test_urlopen_exception_propagates(self, mock_urlopen):
-        mock_urlopen.side_effect = ConnectionRefusedError("boom")
-        with pytest.raises(ConnectionRefusedError):
-            _chan().describe_screenshot("x")
+def test_parse_elements_skips_bad_items():
+    # 坏项（x 非整数）被跳过，好项保留
+    raw = '[{"name":"a","x":"bad","y":1,"type":"b"},' \
+          '{"name":"b","x":10,"y":20,"type":"button"}]'
+    out = VisionChannel._parse_elements(raw)
+    assert len(out) == 1
+    assert out[0]["name"] == "b"

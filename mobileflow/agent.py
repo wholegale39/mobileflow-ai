@@ -17,6 +17,7 @@ from mobileflow.llm import LlmClient
 from mobileflow.memory import MemoryEngine
 from mobileflow.skills import SkillLibrary
 from mobileflow.ui_tree import compress_page_source
+from mobileflow.recoverer import SelfHealer
 from mobileflow.vision import VisionChannel, format_vision_block
 
 
@@ -31,6 +32,7 @@ class Agent:
         memory: MemoryEngine | None = None,
         skills: SkillLibrary | None = None,
         vision: VisionChannel | None = None,
+        healer: SelfHealer | None = None,
         trace_path: str | None = None,
     ) -> None:
         self.llm = llm
@@ -41,6 +43,7 @@ class Agent:
         self.memory = memory
         self.skills = skills
         self.vision = vision
+        self.healer = healer
         self.trace_path = Path(trace_path) if trace_path else None
         self.history: list[str] = []
         self._last_ui_hash: str | None = None
@@ -128,11 +131,15 @@ class Agent:
 
             try:
                 result = self.driver.execute_action(action)
+                recovered = False
             except Exception as e:
-                result = f"⚠️ 执行失败: {e}"
+                # 执行失败 → 自愈：视觉 + LLM 分析失败并重规划
+                recovered = True
+                result = self._recover_and_retry(task, action, e, ui_text, vision_block)
+
             print(f"决策: {action}")
             print(f"执行: {result}")
-            self.history.append(f"{action.get('action')}: {result}")
+            self.history.append(f"{action.get('action')}: {result}" + (" [自愈]" if recovered else ""))
             self._trace(task, "llm", action, result)
             actions.append(action)
 
@@ -144,6 +151,54 @@ class Agent:
 
         return {"status": "timeout", "steps": self.max_steps, "actions": actions,
                 "summary": "达到最大步数"}
+
+    # ---------- 自愈 ----------
+
+    def _recover_and_retry(
+        self,
+        task: str,
+        failed_action: dict[str, Any],
+        error: Exception,
+        ui_text: str,
+        vision_block: str,
+    ) -> str:
+        """执行失败 → 自愈重规划 → 重试验证。"""
+        if not self.healer:
+            return f"⚠️ 执行失败且无恢复器: {error}"
+        print(f"  🩹 动作失败({error})，触发自愈重规划...")
+        # 截屏给恢复器（可选）
+        b64 = None
+        if hasattr(self.driver, "screenshot_b64") and callable(getattr(self.driver, "screenshot_b64", None)):
+            try:
+                b64 = self.driver.screenshot_b64()
+            except Exception:
+                b64 = None
+        try:
+            recover_action = self.healer.recover(
+                ui_text=ui_text,
+                screenshot_b64=b64,
+                failed_action=failed_action,
+                error=error,
+                task=task,
+                history=self.history,
+            )
+        except Exception as e:
+            return f"⚠️ 恢复器分析失败: {e}"
+        if recover_action is None:
+            return f"⚠️ 执行失败且无法恢复: {error}"
+        rec = recover_action.get("action", "?")
+        print(f"  🩹 恢复动作: {rec} {recover_action}")
+        try:
+            rec_result = self.driver.execute_action(recover_action)
+        except Exception as e:
+            return f"⚠️ 恢复动作也失败({rec}): {e}"
+        # 给 UI 一个稳定时间后重试原动作
+        time.sleep(self.settle_wait)
+        try:
+            retry_result = self.driver.execute_action(failed_action)
+            return f"{rec_result}; 重试原动作成功: {retry_result}"
+        except Exception as e:
+            return f"{rec_result}; 重试原动作仍失败: {e}"
 
     # ---------- 工具 ----------
 

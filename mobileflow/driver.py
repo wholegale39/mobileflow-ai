@@ -26,10 +26,12 @@ class MobileDriver:
         self,
         driver: WebDriver,
         *,
+        vision: Any = None,
         default_timeout: float = 10.0,
         default_retry: int = 3,
     ) -> None:
         self.driver = driver
+        self._vision = vision  # 视觉通道（用于 visual_click 纯视觉点击）
         self.default_timeout = default_timeout
         self.default_retry = default_retry
 
@@ -86,6 +88,8 @@ class MobileDriver:
                 x, y = action.get("x", 0), action.get("y", 0)
                 self.driver.tap([(x, y)])
                 return f"📍 点击坐标 ({x}, {y})"
+            if act == "visual_click":
+                return self._visual_click(action)
             if act == "input":
                 el = self._find_element(target)
                 text = action.get("text", "")
@@ -131,6 +135,45 @@ class MobileDriver:
         el2 = self._find_element(target)  # 重新定位，防止 stale
         el2.click()
         return f"👆👆 双击 {self._describe(target)}"
+
+    def _visual_click(self, action: dict[str, Any]) -> str:
+        """纯视觉点击：截屏 → 视觉识别元素坐标 → 点击。
+
+        用于 DOM 不可见的元素（Canvas、游戏、WebView 内嵌、自绘控件）。
+        动作格式：{"action": "visual_click", "name": "购买", "input_text": "可选输入内容"}
+        """
+        from mobileflow.vision import VisionChannel
+
+        name = action.get("name")
+        if not name:
+            raise ValueError("visual_click 必须指定 name")
+        vision: VisionChannel | None = getattr(self, "_vision", None)
+        if not vision:
+            raise RuntimeError("visual_click 需要 MobileDriver(vision=...) 配置视觉通道")
+        b64 = self.screenshot_b64()
+        if not b64:
+            raise RuntimeError("截屏失败，无法视觉点击")
+        elements = vision.analyze_screenshot(b64)
+        # 找名字匹配的元素（模糊匹配：name 包含或元素 name 包含）
+        target = None
+        n = str(name).strip()
+        for el in elements:
+            en = str(el.get("name", ""))
+            if en == n or n in en or en in n:
+                target = el
+                break
+        if target is None:
+            raise ValueError(
+                f"视觉未在屏幕找到元素「{name}」"
+                f"（已识别: {[e.get('name') for e in elements]}）"
+            )
+        x, y = target["x"], target["y"]
+        self.driver.tap([(x, y)])
+        # 可选：点击后输入文本（如点击输入框后填内容）
+        if action.get("input_text"):
+            self.driver.press_keycode(66)  # 触发软键盘/确认
+            # 纯视觉输入文本不可靠，仅在能定位到输入框时建议用常规 input
+        return f"👁️👆 视觉点击「{name}」({x},{y}) [{target.get('type')}]"
 
     # ---------- 内部 ----------
 

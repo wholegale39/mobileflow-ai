@@ -281,3 +281,27 @@ def test_default_timeout_retry():
     driver = MobileDriver(FakeAppiumDriver(), default_timeout=15.0, default_retry=5)
     assert driver.default_timeout == 15.0
     assert driver.default_retry == 5
+
+
+def test_execute_visual_click():
+    """纯视觉点击：视觉通道返回坐标 → driver 点击。"""
+    fake = FakeAppiumDriver()
+    vision = MagicMock()
+    vision.analyze_screenshot.return_value = [
+        {"name": "购买", "x": 540, "y": 1200, "type": "button", "note": "红"},
+    ]
+    driver = MobileDriver(fake, vision=vision, default_retry=1)
+    result = driver.execute_action({"action": "visual_click", "name": "购买"})
+    assert "视觉点击" in result
+    assert fake.calls[-1] == ("tap", [(540, 1200)])
+
+
+def test_execute_visual_click_not_found():
+    fake = FakeAppiumDriver()
+    vision = MagicMock()
+    vision.analyze_screenshot.return_value = [
+        {"name": "返回", "x": 50, "y": 50, "type": "button"},
+    ]
+    driver = MobileDriver(fake, vision=vision, default_retry=1)
+    with pytest.raises(RuntimeError):
+        driver.execute_action({"action": "visual_click", "name": "不存在"})
