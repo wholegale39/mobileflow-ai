@@ -36,6 +36,14 @@ def build_driver(dry_run: bool, appium_url: str, capabilities: str) -> MobileDri
 
 
 def cmd_run(args: argparse.Namespace) -> None:
+    # 启动即校验配置，失败立即退出，不消耗 LLM token
+    try:
+        from mobileflow.config import validate_all, ConfigError
+        validate_all(vision_enabled=bool(args.vision and not args.dry_run), strict_key=True)
+    except ConfigError as e:
+        print(f"❌ {e}")
+        sys.exit(2)
+
     print("⚠️ dry-run 模式：无真实设备，使用示例 UI 树" if args.dry_run else "")
     driver = build_driver(args.dry_run, args.appium_url, args.capabilities)
     llm = LlmClient()
