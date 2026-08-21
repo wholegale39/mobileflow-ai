@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from pathlib import Path
 
 from mobileflow.agent import Agent
 from mobileflow.driver import DryDriver, MobileDriver
@@ -77,6 +78,20 @@ def _cmd_run_impl(args: argparse.Namespace, driver, llm) -> None:
     if not args.plan and hasattr(agent, 'memory') and agent.memory:
         print("\n🧠 记忆:", json.dumps(agent.memory.stats(), ensure_ascii=False, indent=1))
 
+    # 报告产出（可选）
+    if args.report:
+        from mobileflow.report import ReportBuilder
+        rb = ReportBuilder(suite_name="mobileflow")
+        rb.add_case(name=args.task, result=result, trace_path=args.trace)
+        report_dir = Path(args.report)
+        rb.write_json(report_dir / "summary.json")
+        rb.write_allure(report_dir / "allure")
+        s = rb.summary()
+        print(
+            f"\n📊 报告已生成: {report_dir.resolve()} "
+            f"(通过 {s['passed']}/{s['total']}, 报告目录含 summary.json + allure/)"
+        )
+
 
 def cmd_skills(args: argparse.Namespace) -> None:
     lib = SkillLibrary()
@@ -112,6 +127,7 @@ def main() -> None:
     run.add_argument("--trace", default=None, help="轨迹审计输出路径（JSONL）")
     run.add_argument("--capabilities", default="{}", help='JSON 字符串，Android desired capabilities')
     run.add_argument("--plan", action="store_true", help="启用任务规划器（拆解大任务为子任务链）")
+    run.add_argument("--report", default=None, help="报告输出目录（生成 summary.json + allure/ 兼容 Allure 审计报告）")
     run.set_defaults(func=cmd_run)
 
     skills = sub.add_parser("skills", help="技能库管理")
