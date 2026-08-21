@@ -1,5 +1,4 @@
-import pytest
-from mobileflow.ui_tree import compress_page_source, _parse_nodes
+from mobileflow.ui_tree import _parse_nodes, compress_page_source
 
 
 class TestUiTree:

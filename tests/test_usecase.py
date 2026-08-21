@@ -7,12 +7,12 @@ import pytest
 
 from mobileflow.usecase import (
     _VALID_ACTIONS,
+    _parse,
     generate,
     generate_and_save,
     sanitize_filename,
     save,
     validate,
-    _parse,
 )
 
 

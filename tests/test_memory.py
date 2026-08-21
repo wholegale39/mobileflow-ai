@@ -1,8 +1,7 @@
 import json
 import os
-import pytest
 
-from mobileflow.memory import task_hash, MemoryEngine
+from mobileflow.memory import MemoryEngine, task_hash
 
 
 def test_task_hash_case_insensitive():

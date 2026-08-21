@@ -32,7 +32,7 @@ class MemoryEngine:
             return
         try:
             self.data = json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as e:
+        except (OSError, json.JSONDecodeError):
             # 损坏不静默清空：备份后重建，避免丢历史记忆
             backup = self.path.with_suffix(f".corrupt-{int(time.time())}.json")
             try:

@@ -8,7 +8,6 @@ GLM-5.2 max_tokens 只有 300，UI 树必须压缩到几行内：
 from __future__ import annotations
 
 import re
-from typing import Any
 
 
 def compress_page_source(xml: str, max_elements: int = 60) -> str:
@@ -26,7 +25,7 @@ def _parse_nodes(xml: str) -> list[dict[str, str]]:
     """轻量 XML 解析：提取每个节点标签的属性。"""
     nodes: list[dict[str, str]] = []
     # 匹配 <node ... /> 或 <node ...>（自闭合或开标签）
-    pattern = re.compile(r"<node\s([^>]*?)/?>", re.S)
+    pattern = re.compile(r"<node\s([^>]*?)/?>", re.DOTALL)
     for m in pattern.finditer(xml):
         attrs = _parse_attrs(m.group(1))
         if attrs:

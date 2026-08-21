@@ -1,12 +1,13 @@
 """测试 planner 模块:任务拆解、提取步骤、执行流程。"""
 from __future__ import annotations
 
-import pytest
 from unittest.mock import MagicMock
 
-from mobileflow.planner import TaskPlanner
-from mobileflow.llm import LlmClient
+import pytest
+
 from mobileflow.driver import DryDriver
+from mobileflow.llm import LlmClient
+from mobileflow.planner import TaskPlanner
 
 
 def test_extract_steps_numbered():

@@ -15,8 +15,8 @@ from typing import Any
 from appium.webdriver.common.appiumby import AppiumBy
 from appium.webdriver.webdriver import WebDriver
 
-from mobileflow.wait_strategy import wait_until, retry_action
 from mobileflow.utils import escape_xpath_text
+from mobileflow.wait_strategy import retry_action, wait_until
 
 
 class MobileDriver:
@@ -42,7 +42,7 @@ class MobileDriver:
         """截图 base64（视觉通道用），失败返回 None。"""
         try:
             return self.driver.get_screenshot_as_base64()
-        except Exception:
+        except Exception:  # noqa: BLE001 (# intentional broad: Appium 底层异常类型不可预测)
             return None
 
     def execute_action(self, action: dict[str, Any]) -> str:
@@ -187,7 +187,7 @@ class MobileDriver:
             return run_assert(self.driver, action, vision=getattr(self, "_vision", None))
         except _AE:
             raise
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 (# intentional broad: Appium 底层异常类型不可预测)
             raise RuntimeError(f"断言执行异常: {e}")
 
     def _find_element(self, target: dict[str, Any]):
@@ -229,7 +229,7 @@ class MobileDriver:
                 if resource_id:
                     self.driver.find_element(AppiumBy.ID, resource_id)
                     return True
-            except Exception:
+            except Exception:  # noqa: BLE001 (# intentional broad: Appium 底层异常类型不可预测)
                 return False
             return False
         return wait_until(_present, timeout=timeout, desc=f"元素 {text or resource_id}")
@@ -243,7 +243,7 @@ class MobileDriver:
                 if resource_id:
                     self.driver.find_element(AppiumBy.ID, resource_id)
                     return False
-            except Exception:
+            except Exception:  # noqa: BLE001 (# intentional broad: Appium 底层异常类型不可预测)
                 return True
             return False
         return wait_until(_gone, timeout=timeout, desc=f"元素 {text or resource_id} 消失")

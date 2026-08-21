@@ -56,7 +56,7 @@ class SelfHealer:
             try:
                 desc = self.vision.describe_screenshot(screenshot_b64)
                 vision_block = format_vision_block(desc)
-            except Exception:
+            except Exception:  # noqa: BLE001 (# intentional broad: 视觉/LLM 恢复链路异常需降级)
                 vision_block = ""
 
         # 2. 让 LLM 分析失败原因并给恢复动作
@@ -98,7 +98,7 @@ class SelfHealer:
         try:
             raw = client.chat(system, user)
             action = LlmClient._parse_json(raw)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 (# intentional broad: 视觉/LLM 恢复链路异常需降级)
             print(f"  ⚠️ 恢复分析本身失败: {e}")
             return None
 

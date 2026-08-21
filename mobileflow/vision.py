@@ -56,11 +56,12 @@ class VisionChannel:
         env_key = self.api_key
         if not env_key:
             try:
-                for line in open("/opt/data/.env", encoding="utf-8"):
-                    line = line.strip()
-                    if line.startswith("AGNES_API_KEY="):
-                        env_key = line.split("=", 1)[1].strip().strip('"')
-                        break
+                with open("/opt/data/.env", encoding="utf-8") as _f:
+                    for line in _f:
+                        line = line.strip()
+                        if line.startswith("AGNES_API_KEY="):
+                            env_key = line.split("=", 1)[1].strip().strip('"')
+                            break
             except OSError:
                 pass
         if not env_key:

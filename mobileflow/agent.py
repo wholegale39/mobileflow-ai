@@ -15,9 +15,9 @@ from typing import Any
 from mobileflow.driver import DryDriver, MobileDriver
 from mobileflow.llm import LlmClient
 from mobileflow.memory import MemoryEngine, MemoryIndex
+from mobileflow.recoverer import SelfHealer
 from mobileflow.skills import SkillLibrary
 from mobileflow.ui_tree import compress_page_source
-from mobileflow.recoverer import SelfHealer
 from mobileflow.vision import VisionChannel, format_vision_block
 
 
@@ -100,7 +100,7 @@ class Agent:
             return None
         try:
             index = MemoryIndex(self.memory)
-        except Exception:
+        except Exception:  # noqa: BLE001 (# intentional broad: 设备/LLM/视觉异常类型不可预测，统一降级自愈)
             return None
         results = index.search(task, top_k=1, threshold=0.18)
         if not results:
@@ -115,7 +115,7 @@ class Agent:
             ui_before = self._ui_hash()
             try:
                 result = self.driver.execute_action(action)
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 (# intentional broad: 设备/LLM/视觉异常类型不可预测，统一降级自愈)
                 print(f"  ⚠️ 回放第 {i} 步失败: {e}")
                 return False
             print(f"  [{i}/{len(actions)}] {action.get('action')}: {result}")
@@ -147,7 +147,7 @@ class Agent:
                         desc = self.vision.describe_screenshot(b64)
                         vision_block = format_vision_block(desc)
                         print(f"👁️ 视觉: {desc[:80]}...")
-                    except Exception as e:
+                    except Exception as e:  # noqa: BLE001 (# intentional broad: 设备/LLM/视觉异常类型不可预测，统一降级自愈)
                         print(f"  ⚠️ 视觉通道失败: {e}")
 
             action = self.llm.decide_action(ui_text + vision_block, task, self.history)
@@ -157,7 +157,7 @@ class Agent:
             try:
                 result = self.driver.execute_action(action)
                 recovered = False
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 (# intentional broad: 设备/LLM/视觉异常类型不可预测，统一降级自愈)
                 # 执行失败 → 自愈：视觉 + LLM 分析失败并重规划
                 recovered = True
                 result = self._recover_and_retry(task, action, e, ui_text, vision_block)
@@ -196,7 +196,7 @@ class Agent:
         if hasattr(self.driver, "screenshot_b64") and callable(getattr(self.driver, "screenshot_b64", None)):
             try:
                 b64 = self.driver.screenshot_b64()
-            except Exception:
+            except Exception:  # noqa: BLE001 (# intentional broad: 设备/LLM/视觉异常类型不可预测，统一降级自愈)
                 b64 = None
         try:
             recover_action = self.healer.recover(
@@ -207,7 +207,7 @@ class Agent:
                 task=task,
                 history=self.history,
             )
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 (# intentional broad: 设备/LLM/视觉异常类型不可预测，统一降级自愈)
             return f"⚠️ 恢复器分析失败: {e}"
         if recover_action is None:
             return f"⚠️ 执行失败且无法恢复: {error}"
@@ -215,14 +215,14 @@ class Agent:
         print(f"  🩹 恢复动作: {rec} {recover_action}")
         try:
             rec_result = self.driver.execute_action(recover_action)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 (# intentional broad: 设备/LLM/视觉异常类型不可预测，统一降级自愈)
             return f"⚠️ 恢复动作也失败({rec}): {e}"
         # 给 UI 一个稳定时间后重试原动作
         time.sleep(self.settle_wait)
         try:
             retry_result = self.driver.execute_action(failed_action)
             return f"{rec_result}; 重试原动作成功: {retry_result}"
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 (# intentional broad: 设备/LLM/视觉异常类型不可预测，统一降级自愈)
             return f"{rec_result}; 重试原动作仍失败: {e}"
 
     # ---------- 工具 ----------

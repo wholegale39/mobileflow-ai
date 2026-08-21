@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 from mobileflow.testdata import (
-    boundary_strings,
     boundaries_int,
+    boundary_strings,
     credit_card_like,
     fill_template,
     load_table,
@@ -27,7 +27,7 @@ def test_boundaries_int_single():
 
 def test_boundaries_strings():
     b = boundary_strings(2, 4, char="x")
-    lens = sorted(set(len(s) for s in b))
+    lens = sorted({len(s) for s in b})
     assert lens == [1, 2, 3, 4, 5]
 
 

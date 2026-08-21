@@ -2,13 +2,14 @@
 from __future__ import annotations
 
 import time
+
 import pytest
 
 from mobileflow.wait_strategy import (
+    retry_action,
     wait_until,
     wait_until_gone,
     wait_until_present,
-    retry_action,
 )
 
 

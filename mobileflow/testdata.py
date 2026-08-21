@@ -14,9 +14,9 @@ import csv
 import json
 import random
 import string
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
-
+from typing import Any
 
 # ---------- 边界值 ----------
 

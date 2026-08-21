@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from mobileflow.assertion import AssertionFailed, run_assert
+
 AssertionError = AssertionFailed
 
 

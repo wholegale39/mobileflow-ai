@@ -19,7 +19,6 @@ from typing import Any
 
 import yaml
 
-
 # 需 target 的动作(可缺省但提示)
 _NEEDS_TARGET = {"click", "long_click", "double_click", "wait", "input"}
 # input 额外需 text

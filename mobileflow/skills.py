@@ -68,7 +68,7 @@ class SkillLibrary:
         避免单字误命中。
         """
         best, best_score = None, 0
-        for name, skill in self.skills.items():
+        for skill in self.skills.values():
             keywords = skill.get("keywords") or []
             desc = skill.get("description", "")
             score = 0

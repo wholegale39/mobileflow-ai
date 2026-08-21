@@ -39,3 +39,47 @@ def test_parse_elements_skips_bad_items():
     out = VisionChannel._parse_elements(raw)
     assert len(out) == 1
     assert out[0]["name"] == "b"
+
+
+# ---------- 视觉通道 key 回退 + describe/analyze 分支 ----------
+
+from mobileflow.vision import VisionChannel
+
+
+def test_vision_api_key_from_own_env(monkeypatch):
+    """未传 key 时应从 MOBILEFLOW_VISION_API_KEY 环境变量回退。"""
+    monkeypatch.setenv("MOBILEFLOW_VISION_API_KEY", "sk-from-vision-env")
+    v = VisionChannel()
+    assert v.api_key == "sk-from-vision-env"
+
+
+def test_vision_explicit_key_wins(monkeypatch):
+    monkeypatch.delenv("AGNES_API_KEY", raising=False)
+    monkeypatch.delenv("MOBILEFLOW_VISION_API_KEY", raising=False)
+    v = VisionChannel(api_key="sk-explicit")
+    assert v.api_key == "sk-explicit"
+
+
+def test_describe_screenshot_calls_vision(monkeypatch):
+    """describe_screenshot 应走 _call_vision 路径。"""
+    v = VisionChannel(api_key="sk-x", base_url="https://x.test/v1")
+    captured = {}
+
+    def _fake_call(img, prompt):
+        captured["img"] = img
+        captured["prompt_has_describe"] = "要点" in prompt or "界面" in prompt
+        return "要点1；要点2"
+    monkeypatch.setattr(v, "_call_vision", _fake_call)
+    out = v.describe_screenshot("imgdata")
+    assert out == "要点1；要点2"
+    assert captured["img"] == "imgdata"
+
+
+def test_analyze_screenshot_calls_vision_and_parses(monkeypatch):
+    v = VisionChannel(api_key="sk-x")
+    monkeypatch.setattr(v, "_call_vision", lambda img, p:
+        '[{"name":"登录","x":100,"y":200,"type":"button","note":"蓝"}]')
+    out = v.analyze_screenshot("img")
+    assert len(out) == 1
+    assert out[0]["name"] == "登录"
+    assert out[0]["x"] == 100

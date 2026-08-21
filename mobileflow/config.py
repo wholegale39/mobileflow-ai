@@ -14,7 +14,6 @@ import os
 from pathlib import Path
 from typing import Any
 
-
 # key 前缀白名单（仅做格式初筛，防止配成明显错误值如 "dummy"/"xxx"）
 _KEY_PREFIXES = ("sk-", "Bearer ", "wrk-", "eyJ")
 

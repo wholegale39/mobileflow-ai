@@ -8,7 +8,8 @@
 from __future__ import annotations
 
 import time
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from mobileflow.utils import escape_xpath_text
 
@@ -56,7 +57,7 @@ def wait_until_gone(
             if resource_id:
                 driver.find_element(AppiumBy.ID, resource_id)
                 return False
-        except Exception:
+        except Exception:  # noqa: BLE001 (# intentional broad: 元素 not-found 与设备异常均判为未就绪)
             return True
         return False
 
@@ -82,7 +83,7 @@ def wait_until_present(
             if resource_id:
                 driver.find_element(AppiumBy.ID, resource_id)
                 return True
-        except Exception:
+        except Exception:  # noqa: BLE001 (# intentional broad: 元素 not-found 与设备异常均判为未就绪)
             return False
         return False
 
@@ -115,7 +116,7 @@ def retry_action(
     for attempt in range(1, max_attempts + 1):
         try:
             return action_fn()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 (# intentional broad: 元素 not-found 与设备异常均判为未就绪)
             last_exc = exc
             if attempt < max_attempts:
                 wait = min(delay * (2 ** (attempt - 1)), max_delay)

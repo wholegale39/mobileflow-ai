@@ -14,7 +14,6 @@ from mobileflow.planner import TaskPlanner
 from mobileflow.skills import SkillLibrary
 from mobileflow.vision import VisionChannel
 
-
 SAMPLE_UI = """<node resource-id="com.example:id/list" bounds="[0,100][1080,2200]">
   <node text="微信" resource-id="com.example:id/app_name" clickable="true" bounds="[0,300][360,500]"/>
   <node text="支付宝" resource-id="com.example:id/app_name" clickable="true" bounds="[0,520][360,720]"/>
@@ -38,7 +37,7 @@ def build_driver(dry_run: bool, appium_url: str, capabilities: str) -> MobileDri
 def cmd_run(args: argparse.Namespace) -> None:
     # 启动即校验配置，失败立即退出，不消耗 LLM token
     try:
-        from mobileflow.config import validate_all, ConfigError
+        from mobileflow.config import ConfigError, validate_all
         validate_all(vision_enabled=bool(args.vision and not args.dry_run), strict_key=True)
     except ConfigError as e:
         print(f"❌ {e}")
@@ -109,7 +108,8 @@ def cmd_skills(args: argparse.Namespace) -> None:
             print(f"- {name}: {skill.get('description', '')}")
     elif args.action == "add":
         import yaml
-        skill = yaml.safe_load(open(args.file, encoding="utf-8"))
+        with open(args.file, encoding="utf-8") as f:
+            skill = yaml.safe_load(f)
         lib.add(skill)
         print(f"✅ 技能已添加: {skill.get('name')}")
 

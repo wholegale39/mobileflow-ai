@@ -1,10 +1,11 @@
 """测试 driver 模块:动作执行、元素定位、新动作。"""
 from __future__ import annotations
 
-import pytest
 from unittest.mock import MagicMock
 
-from mobileflow.driver import MobileDriver, DryDriver
+import pytest
+
+from mobileflow.driver import DryDriver, MobileDriver
 
 
 class FakeAppiumDriver:
@@ -155,7 +156,6 @@ def test_execute_click_by_index():
 
 def test_execute_click_index_out_of_range():
     fake = FakeAppiumDriver()
-    original = fake.find_elements
     fake.find_elements = lambda by, value: [MagicMock()]
     driver = MobileDriver(fake, default_retry=1)
     with pytest.raises(RuntimeError, match="动作执行失败"):

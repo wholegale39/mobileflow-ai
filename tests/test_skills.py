@@ -6,7 +6,6 @@ import sys
 # 让 `tests/` 与 `mobileflow/` 同级时可直接 import mobileflow.skills
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import pytest
 
 from mobileflow.skills import SkillLibrary, _fill
 

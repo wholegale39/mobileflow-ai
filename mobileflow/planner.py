@@ -14,13 +14,12 @@
 """
 from __future__ import annotations
 
-import json
 import re
 from typing import Any
 
 from mobileflow.agent import Agent
+from mobileflow.driver import DryDriver, MobileDriver
 from mobileflow.llm import LlmClient
-from mobileflow.driver import MobileDriver, DryDriver
 
 
 class TaskPlanner:
@@ -182,6 +181,6 @@ class TaskPlanner:
         for _ in succeeded_indices:
             try:
                 self.driver.execute_action({"action": "back"})
-            except Exception:
+            except Exception:  # noqa: BLE001 (# intentional broad: back 回滚失败需优雅终止)
                 print("  ⚠️ 回滚中断（back 失败）")
                 break

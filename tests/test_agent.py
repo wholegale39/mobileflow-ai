@@ -1,15 +1,10 @@
 """测试 agent 模块:决策循环、等待集成、新动作支持。"""
 from __future__ import annotations
 
-import pytest
 from unittest.mock import MagicMock
 
 from mobileflow.agent import Agent
-from mobileflow.llm import LlmClient
 from mobileflow.driver import DryDriver, MobileDriver
-from mobileflow.memory import MemoryEngine
-from mobileflow.skills import SkillLibrary
-
 
 SAMPLE_UI = "<root><node text='测试'/></root>"
 SAMPLE_UI_2 = "<root><node text='测试2'/></root>"
@@ -248,3 +243,66 @@ def test_agent_run_dry_driver():
     result = agent.run("dry 测试")
 
     assert result["status"] == "done"
+
+
+# ---------- RAG 命中 / 技能回放 / 自愈路径 ----------
+
+def test_agent_run_memory_rag_hit(monkeypatch):
+    """精确哈希未命中但 RAG 召回相似链并回放成功 → via=memory_rag。"""
+    llm = FakeLlmClient([{ "action": "done"}])
+    driver = MagicMock(spec=DryDriver)
+    driver.page_source.return_value = SAMPLE_UI
+    driver.execute_action.return_value = "ok"
+
+    from mobileflow.memory import MemoryEngine
+    mem = MagicMock(spec=MemoryEngine)
+    mem.lookup.return_value = None  # 精确未命中
+    mem.stats.return_value = {"chains": 0, "stable": 0}
+
+    agent = Agent(llm, driver, max_steps=5, memory=mem, skills=None)
+    # 让 _rag_recall 返回一条相似链
+    def _rag_recall(task):
+        return {"task": "相似任务", "similarity": 0.35,
+                "actions": [{"action": "done"}]}
+    monkeypatch.setattr(agent, "_rag_recall", _rag_recall)
+
+    result = agent.run("某任务")
+    assert result["via"] == "memory_rag"
+    assert "0.35" in result["summary"]
+    assert llm.call_count == 0  # RAG 命中不走 LLM
+
+
+def test_agent_run_memory_exact_hit(monkeypatch):
+    """精确哈希命中 → via=memory。"""
+    llm = FakeLlmClient([])
+    driver = MagicMock(spec=DryDriver)
+    driver.page_source.return_value = SAMPLE_UI
+    driver.execute_action.return_value = "ok"
+    from mobileflow.memory import MemoryEngine
+    mem = MagicMock(spec=MemoryEngine)
+    mem.lookup.return_value = [{"action": "done"}]
+    mem.stats.return_value = {"chains": 1, "stable": 1}
+    agent = Agent(llm, driver, max_steps=5, memory=mem, skills=None)
+    result = agent.run("已记任务")
+    assert result["via"] == "memory"
+    assert llm.call_count == 0
+
+
+def test_agent_run_self_heal_on_driver_failure(monkeypatch):
+    """driver 执行抛错 → 自愈分支被触发(recoverer 返回恢复动作)。"""
+    llm = FakeLlmClient([{"action": "click", "target": {"text": "btn"}}])
+    driver = MagicMock()
+    driver.page_source.return_value = SAMPLE_UI
+    driver.execute_action.side_effect = RuntimeError("元素不可点击")
+    driver.screenshot_b64.return_value = None
+
+    healer = MagicMock()
+    # 自愈器建议一个恢复动作
+    healer.recover.return_value = {"action": "click", "target": {"text": "btn"}}
+    # 第1次 execute_action(原动作)抛错 → 触发自愈; 第2次(恢复动作)成功; 第3次(重试原)成功
+    driver.execute_action.side_effect = [RuntimeError("元素不可点击"), "recovered", "ok"]
+
+    agent = Agent(llm, driver, max_steps=5, healer=healer, skills=None)
+    agent.run("自愈场景")
+    # 核心断言: 失败后自愈分支被触发
+    assert healer.recover.called
