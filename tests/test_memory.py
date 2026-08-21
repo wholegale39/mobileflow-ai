@@ -67,3 +67,61 @@ def test_memory_engine_persists_json_to_disk(tmp_path):
     assert entry["task"] == "persisted task"
     assert entry["hits"] == 2
     assert entry["actions"] == ["step3", "step4"]
+
+
+# -------------------- RAG 语义检索 --------------------
+
+from mobileflow.memory import MemoryIndex
+
+
+def _mk_engine_with_stable_chains(tmp_path):
+    """造一个含 4 条稳定链（hits>=2）的记忆引擎供 RAG 测试。"""
+    from mobileflow.memory import MemoryEngine
+    eng = MemoryEngine(tmp_path / "mem.json")
+    tasks = {
+        "打开微信发送消息": [{"action": "open_app", "package": "wx"}, {"action": "done"}],
+        "点击搜索框输入关键词": [{"action": "click", "target": {"text": "搜索"}}, {"action": "done"}],
+        "关闭应用回到桌面": [{"action": "home"}, {"action": "done"}],
+        "进入设置开启WiFi": [{"action": "click", "target": {"text": "设置"}}, {"action": "done"}],
+    }
+    for t, acts in tasks.items():
+        eng.record_success(t, acts)
+        eng.record_success(t, acts)  # hits=2 升稳定链
+    return eng
+
+
+def test_rag_search_returns_similar_task(tmp_path):
+    eng = _mk_engine_with_stable_chains(tmp_path)
+    idx = MemoryIndex(eng)
+    results = idx.search("给好友发一条微信消息", top_k=2)
+    assert results, "应检索到相似任务"
+    best = results[0]
+    assert "微信" in best["task"] or "发送消息" in best["task"]
+    assert best["similarity"] >= 0.18
+    assert best["actions"][0]["action"] == "open_app"
+
+
+def test_rag_ranks_by_similarity(tmp_path):
+    eng = _mk_engine_with_stable_chains(tmp_path)
+    idx = MemoryIndex(eng)
+    results = idx.search("搜索并输入关键词", top_k=3)
+    assert results
+    # 最相关的应是搜索框那条
+    assert "搜索" in results[0]["task"]
+    sims = [r["similarity"] for r in results]
+    assert sims == sorted(sims, reverse=True)
+
+
+def test_rag_threshold_filters_weak_matches(tmp_path):
+    eng = _mk_engine_with_stable_chains(tmp_path)
+    idx = MemoryIndex(eng)
+    # 高阈值几乎无匹配
+    results = idx.search("完全无关的任务xyz", top_k=5, threshold=0.9)
+    assert results == []
+
+
+def test_rag_empty_index_returns_empty(tmp_path):
+    from mobileflow.memory import MemoryEngine
+    eng = MemoryEngine(tmp_path / "empty.json")
+    idx = MemoryIndex(eng)
+    assert idx.search("任意任务") == []

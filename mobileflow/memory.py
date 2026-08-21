@@ -95,3 +95,112 @@ class MemoryEngine:
             "chains": len(chains),
             "stable": sum(1 for c in chains.values() if c.get("hits", 0) >= 2),
         }
+
+
+# =========================================================================
+# RAG 语义检索层 —— 基于记忆链的字符 n-gram + 余弦相似度，零新依赖
+# =========================================================================
+
+import numpy as np
+
+
+def _ngrams(text: str, n: int = 2) -> set[str]:
+    """字符 n-gram（对中文天然有效，无需分词）。"""
+    return {text[i : i + n] for i in range(len(text) - n + 1)}
+
+
+class MemoryIndex:
+    """记忆库的语义检索索引。
+
+    当精确 task_hash 未命中时，用 RAG 检索最相似的历史任务，
+    返回相似任务及其动作链，供 Agent 参考（而非直接回放）。
+
+    基于字符 n-gram + TF-IDF 权重 + 余弦相似度，纯 numpy 实现，
+    无需下载任何 embedding 模型，离线可用、轻量。
+    """
+
+    def __init__(self, mem: MemoryEngine, *, ngram_n: int = 2) -> None:
+        self.mem = mem
+        self.n = ngram_n
+        self._vocab: list[str] = []
+        self._df: dict[str, int] = {}
+        self._vectors: np.ndarray | None = None  # 每行一个稳定链，TF-IDF 加权
+        self._tasks: list[str] = []
+        self._dirty = True
+        self._rebuild()
+
+    def _rebuild(self) -> None:
+        """根据当前稳定链重建索引。"""
+        chains = self.mem.data.get("chains", {})
+        tasks = [c["task"] for c in chains.values() if c.get("hits", 0) >= 2]
+        # 建词汇表 + 文档频率
+        vocab: dict[str, int] = {}
+        df: dict[str, int] = {}
+        for t in tasks:
+            for g in _ngrams(t, self.n):
+                vocab.setdefault(g, 0)
+                df[g] = df.get(g, 0) + 1
+        vocab_list = sorted(vocab)
+        V = len(vocab_list)
+        idx = {g: i for i, g in enumerate(vocab_list)}
+        N = len(tasks)
+        if N == 0:
+            self._vectors = None
+            self._tasks = []
+            self._vocab = vocab_list
+            self._df = df
+            return
+        arr = np.zeros((N, V))
+        for row, t in enumerate(tasks):
+            for g in _ngrams(t, self.n):
+                if g in idx:
+                    # IDF 权重（拉普拉斯平滑）
+                    arr[row, idx[g]] = np.log((N + 1) / (df.get(g, 0) + 1)) + 1.0
+        # L2 归一化（余弦相似度 = 点积）
+        norms = np.linalg.norm(arr, axis=1, keepdims=True)
+        arr = np.where(norms > 0, arr / norms, 0.0)
+        self._vectors = arr
+        self._tasks = tasks
+        self._vocab = vocab_list
+        self._df = df
+
+    def search(self, task: str, top_k: int = 3, threshold: float = 0.18) -> list[dict[str, Any]]:
+        """检索与 task 语义最相似的稳定链。
+
+        Returns:
+            [{"task": "...", "similarity": 0.6, "actions": [...], "hits": 2}, ...]
+            按相似度降序，仅返回 >= threshold 的结果。无索引或无匹配返回空列表。
+        """
+        if self._vectors is None or len(self._tasks) == 0:
+            return []
+        vecs = self._vectors
+        if vecs is None:
+            return []
+        q = np.zeros(len(self._vocab))
+        for g in _ngrams(task, self.n):
+            if g in self._vocab:
+                i = self._vocab.index(g)
+                q[i] = np.log((len(self._tasks) + 1) / (self._df.get(g, 0) + 1)) + 1.0
+        qn = np.linalg.norm(q)
+        if qn == 0:
+            return []
+        q = q / qn
+        sims = vecs @ q
+        chains = self.mem.data.get("chains", {})
+        results: list[dict[str, Any]] = []
+        for i, score in enumerate(np.argsort(-sims)):
+            s = float(sims[score])
+            if s < threshold:
+                break
+            t = self._tasks[score]
+            h = task_hash(t)
+            c = chains.get(h, {})
+            results.append({
+                "task": t,
+                "similarity": round(s, 3),
+                "actions": c.get("actions", []),
+                "hits": c.get("hits", 0),
+            })
+            if len(results) >= top_k:
+                break
+        return results

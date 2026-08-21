@@ -14,7 +14,7 @@ from typing import Any
 
 from mobileflow.driver import DryDriver, MobileDriver
 from mobileflow.llm import LlmClient
-from mobileflow.memory import MemoryEngine
+from mobileflow.memory import MemoryEngine, MemoryIndex
 from mobileflow.skills import SkillLibrary
 from mobileflow.ui_tree import compress_page_source
 from mobileflow.recoverer import SelfHealer
@@ -55,7 +55,7 @@ class Agent:
         """执行任务：记忆 → 技能 → LLM 决策。"""
         print(f"🎯 任务: {task}")
 
-        # 1. 稳定记忆链回放
+        # 1. 稳定记忆链回放（精确 task_hash）
         if self.memory:
             chain = self.memory.lookup(task)
             if chain:
@@ -65,6 +65,14 @@ class Agent:
                             "summary": "记忆链回放成功"}
                 print("↩️ 回放失败，回退在线决策")
                 self.memory.record_failure(task)
+            else:
+                # 精确未命中 → RAG 语义检索相似稳定链
+                ref = self._rag_recall(task)
+                if ref and self._replay(task, ref["actions"]):
+                    return {"status": "done", "via": "memory_rag", "steps": len(ref["actions"]),
+                            "summary": f"记忆 RAG 命中相似任务「{ref['task']}」(sim={ref['similarity']})，回放成功"}
+                if ref:
+                    print(f"↩️ RAG 命中「{ref['task']}」(sim={ref['similarity']})但回放失败，回退在线决策")
 
         # 2. 技能库匹配
         if self.skills:
@@ -81,6 +89,23 @@ class Agent:
         if result["status"] == "done" and self.memory:
             self.memory.record_success(task, result.get("actions", []))
         return result
+
+    def _rag_recall(self, task: str) -> dict[str, Any] | None:
+        """RAG 语义检索：从记忆库找最相似的稳定链，返回 top1 供参考。
+
+        精确 task_hash 未命中时才走这里；相似度最高的相似任务动作链可作为
+        参考回放（而非强行套用）。无记忆库或无索引返回 None。
+        """
+        if not self.memory:
+            return None
+        try:
+            index = MemoryIndex(self.memory)
+        except Exception:
+            return None
+        results = index.search(task, top_k=1, threshold=0.18)
+        if not results:
+            return None
+        return results[0]
 
     # ---------- 记忆/技能回放 ----------
 
