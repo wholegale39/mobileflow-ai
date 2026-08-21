@@ -7,12 +7,12 @@
 """
 from __future__ import annotations
 
-import json
 import os
-import re
 from typing import Any
 
 from openai import OpenAI
+
+from mobileflow.utils import action_to_desc, parse_llm_json
 
 
 class LlmClient:
@@ -95,43 +95,12 @@ class LlmClient:
         return self._parse_json(raw)
 
     @staticmethod
+    @staticmethod
     def _action_to_desc(action: dict[str, Any]) -> str:
-        """把动作 dict 转成人类可读的一句话（供恢复器分析失败用）。"""
-        act = action.get("action", "")
-        t = action.get("target") or {}
-        if act in ("click", "long_click", "double_click"):
-            if t.get("text"):
-                return f"{act}(text={t['text']!r})"
-            if t.get("resource_id"):
-                return f"{act}(resource_id={t['resource_id']!r})"
-            if t.get("index") is not None:
-                return f"{act}(index={t['index']})"
-        if act == "input":
-            return f"input(text={action.get('text')!r}) -> {t}"
-        if act == "coordinate_click":
-            return f"coordinate_click(x={action.get('x')}, y={action.get('y')})"
-        if act == "swipe":
-            return f"swipe({action.get('start')}→{action.get('end')})"
-        if act == "drag":
-            return f"drag({action.get('from')}→{action.get('to')})"
-        if act == "scroll":
-            return f"scroll({action.get('direction')})"
-        if act == "input_key":
-            return f"input_key(keycode={action.get('keycode')})"
-        return f"{act}({action})"
+        """把动作 dict 转成人类可读的一句话（委托 utils.action_to_desc）。"""
+        return action_to_desc(action)
 
     @staticmethod
     def _parse_json(raw: str) -> dict[str, Any]:
-        """容错解析 LLM 输出的 JSON（去掉代码块围栏/前后废话）。"""
-        cleaned = re.sub(r"```(?:json)?", "", raw).strip()
-        # 找第一个 { 到最后一个 }
-        start, end = cleaned.find("{"), cleaned.rfind("}")
-        if start == -1 or end == -1:
-            raise ValueError(f"LLM 输出无 JSON: {raw[:120]}")
-        try:
-            obj = json.loads(cleaned[start : end + 1])
-        except json.JSONDecodeError as e:
-            raise ValueError(f"JSON 解析失败: {e} — {raw[:120]}")
-        if not isinstance(obj, dict) or "action" not in obj:
-            raise ValueError(f"JSON 缺 action 字段: {obj}")
-        return obj
+        """容错解析 LLM 输出的 JSON（委托 utils.parse_llm_json）。"""
+        return parse_llm_json(raw)

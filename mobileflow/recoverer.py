@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 from mobileflow.llm import LlmClient
+from mobileflow.utils import action_to_desc, parse_llm_json
 from mobileflow.vision import VisionChannel, format_vision_block
 
 
@@ -60,7 +61,7 @@ class SelfHealer:
                 vision_block = ""
 
         # 2. 让 LLM 分析失败原因并给恢复动作
-        action_desc = LlmClient._action_to_desc(failed_action)
+        action_desc = action_to_desc(failed_action)
         system = (
             "你是移动端自动化 Agent 的故障恢复专家。Agent 刚执行了一个动作但失败了，"
             "你需要根据失败信息和当前屏幕状态，输出【一个】恢复动作来把 Agent 带回可继续执行的状态。"
@@ -97,7 +98,7 @@ class SelfHealer:
         client = self._client()
         try:
             raw = client.chat(system, user)
-            action = LlmClient._parse_json(raw)
+            action = parse_llm_json(raw)
         except Exception as e:  # noqa: BLE001 (# intentional broad: 视觉/LLM 恢复链路异常需降级)
             print(f"  ⚠️ 恢复分析本身失败: {e}")
             return None

@@ -14,6 +14,7 @@ import json
 import os
 import re
 import urllib.request
+from pathlib import Path
 from typing import Any
 
 
@@ -56,12 +57,14 @@ class VisionChannel:
         env_key = self.api_key
         if not env_key:
             try:
-                with open("/opt/data/.env", encoding="utf-8") as _f:
-                    for line in _f:
-                        line = line.strip()
-                        if line.startswith("AGNES_API_KEY="):
-                            env_key = line.split("=", 1)[1].strip().strip('"')
-                            break
+                env_file = Path(os.environ.get("MOBILEFLOW_ENV_FILE", "/opt/data/.env"))
+                if env_file.exists():
+                    with open(env_file, encoding="utf-8") as _f:
+                        for line in _f:
+                            line = line.strip()
+                            if line.startswith("AGNES_API_KEY="):
+                                env_key = line.split("=", 1)[1].strip().strip('"')
+                                break
             except OSError:
                 pass
         if not env_key:
