@@ -11,6 +11,11 @@ import time
 from typing import Any, Callable
 
 
+def _esc(text: str) -> str:
+    """转义 XPath 双引号内的文本（防注入/解析错误）。"""
+    return text.replace("\\", "\\\\").replace('"', '\\"').replace("'", "\\'")
+
+
 def wait_until(
     condition: Callable[[], bool],
     *,
@@ -42,12 +47,14 @@ def wait_until_gone(
     通过 AppiumBy 查找元素,找不到即视为消失。
     需要 driver 有 find_element/find_elements 方法(Appium WebDriver)。
     """
+    if not text and not resource_id:
+        raise ValueError("text 与 resource_id 至少需指定一个")
     from appium.webdriver.common.appiumby import AppiumBy
 
     def _gone() -> bool:
         try:
             if text:
-                driver.find_element(AppiumBy.XPATH, f'//*[@text="{text}"]')
+                driver.find_element(AppiumBy.XPATH, f'//*[@text="{_esc(text)}"]')
                 return False
             if resource_id:
                 driver.find_element(AppiumBy.ID, resource_id)
@@ -66,12 +73,14 @@ def wait_until_present(
     timeout: float = 10.0,
 ) -> bool:
     """等待指定文本/resource_id 的元素出现。"""
+    if not text and not resource_id:
+        raise ValueError("text 与 resource_id 至少需指定一个")
     from appium.webdriver.common.appiumby import AppiumBy
 
     def _present() -> bool:
         try:
             if text:
-                driver.find_element(AppiumBy.XPATH, f'//*[@text="{text}"]')
+                driver.find_element(AppiumBy.XPATH, f'//*[@text="{_esc(text)}"]')
                 return True
             if resource_id:
                 driver.find_element(AppiumBy.ID, resource_id)
@@ -88,6 +97,7 @@ def retry_action(
     *,
     max_attempts: int = 3,
     delay: float = 1.0,
+    max_delay: float = 10.0,
     on_retry: Callable[[int, Exception], None] | None = None,
 ) -> str:
     """带指数退避的重试包装。
@@ -111,7 +121,7 @@ def retry_action(
         except Exception as exc:
             last_exc = exc
             if attempt < max_attempts:
-                wait = delay * (2 ** (attempt - 1))
+                wait = min(delay * (2 ** (attempt - 1)), max_delay)
                 if on_retry:
                     on_retry(attempt, exc)
                 print(f"  ⚠️ 第 {attempt} 次失败({exc}),{wait:.1f}s 后重试...")

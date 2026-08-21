@@ -39,6 +39,16 @@ def cmd_run(args: argparse.Namespace) -> None:
     driver = build_driver(args.dry_run, args.appium_url, args.capabilities)
     llm = LlmClient()
 
+    try:
+        _cmd_run_impl(args, driver, llm)
+    except KeyboardInterrupt:
+        print("\n⚠️ 用户中断 (Ctrl+C)，任务已停止")
+        sys.exit(130)
+
+
+def _cmd_run_impl(args: argparse.Namespace, driver, llm) -> None:
+
+    agent = None  # 先置空，避免 --plan 分支后访问未定义
     # 有 planner 时用规划器，否则用普通 Agent
     if args.plan:
         planner = TaskPlanner(

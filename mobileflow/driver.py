@@ -46,7 +46,6 @@ class MobileDriver:
         """执行一个动作 JSON，返回结果描述。支持重试。"""
         act = action.get("action", "")
         target = action.get("target") or {}
-        max_attempts = action.get("retry", self.default_retry)
         timeout = action.get("timeout", self.default_timeout)
 
         def _exec() -> str:
@@ -74,25 +73,13 @@ class MobileDriver:
                 el.click()
                 return f"👆 点击 {self._describe(target)}"
             if act == "long_click":
-                el = self._find_element(target)
-                # 长按：从中心点向下滑动模拟
-                rect = el.rect
-                cx, cy = rect["x"] + rect["width"] // 2, rect["y"] + rect["height"] // 2
-                self.driver.swipe(cx, cy, cx, cy + 5, 1000)
-                return f"🖐️ 长按 {self._describe(target)}"
+                return self._long_click(target)
             if act == "double_click":
-                el = self._find_element(target)
-                el.click()
-                time.sleep(0.1)
-                el.click()
-                return f"👆👆 双击 {self._describe(target)}"
+                return self._double_click(target)
             if act == "drag":
                 start_el = self._find_element(action.get("from", {}))
                 end_el = self._find_element(action.get("to", {}))
-                s_rect, e_rect = start_el.rect, end_el.rect
-                sx, sy = s_rect["x"] + s_rect["width"] // 2, s_rect["y"] + s_rect["height"] // 2
-                ex, ey = e_rect["x"] + e_rect["width"] // 2, e_rect["y"] + e_rect["height"] // 2
-                self.driver.drag_and_drop(sx, sy, ex, ey)
+                self.driver.drag_and_drop(start_el, end_el)
                 return f"↔️ 拖动 {self._describe(action.get('from', {}))} → {self._describe(action.get('to', {}))}"
             if act == "coordinate_click":
                 x, y = action.get("x", 0), action.get("y", 0)
@@ -120,13 +107,40 @@ class MobileDriver:
                 return f"⏳ 等待元素出现 {'✓' if ok else '✗'}"
             raise ValueError(f"未知动作: {act}")
 
+        # 仅对幂等/可恢复动作启用重试；input/drag/swipe/done 等非幂等或无状态动作不重试
+        _NON_RETRYABLE = {"input", "drag", "swipe", "done"}
+        max_attempts = 1 if act in _NON_RETRYABLE else action.get("retry", self.default_retry)
         return retry_action(_exec, max_attempts=max_attempts, on_retry=lambda n, e: print(f"  ⚠️ 重试 {n}: {e}"))
+
+    # ---------- 长按/双击 ----------
+
+    def _long_click(self, target: dict[str, Any]) -> str:
+        """长按：用坐标 swipe 起点=终点 + duration 模拟长按（比 5px 偏移更可靠）。"""
+        el = self._find_element(target)
+        rect = el.rect
+        cx, cy = rect["x"] + rect["width"] // 2, rect["y"] + rect["height"] // 2
+        self.driver.swipe(cx, cy, cx, cy, 1000)
+        return f"🖐️ 长按 {self._describe(target)}"
+
+    def _double_click(self, target: dict[str, Any]) -> str:
+        """双击：两次点击之间重新定位，避免 StaleElementReferenceException。"""
+        el1 = self._find_element(target)
+        el1.click()
+        time.sleep(0.1)
+        el2 = self._find_element(target)  # 重新定位，防止 stale
+        el2.click()
+        return f"👆👆 双击 {self._describe(target)}"
 
     # ---------- 内部 ----------
 
+    @staticmethod
+    def _esc(text: str) -> str:
+        """转义 XPath 双引号内的文本（防注入/解析错误）。"""
+        return text.replace("\\", "\\\\").replace('"', '\\"').replace("'", "\\'")
+
     def _find_element(self, target: dict[str, Any]):
         if target.get("text"):
-            return self.driver.find_element(AppiumBy.XPATH, f'//*[@text="{target["text"]}"]')
+            return self.driver.find_element(AppiumBy.XPATH, f'//*[@text="{self._esc(target["text"])}"]')
         if target.get("resource_id"):
             return self.driver.find_element(AppiumBy.ID, target["resource_id"])
         if target.get("index") is not None:
@@ -158,7 +172,7 @@ class MobileDriver:
         def _present() -> bool:
             try:
                 if text:
-                    self.driver.find_element(AppiumBy.XPATH, f'//*[@text="{text}"]')
+                    self.driver.find_element(AppiumBy.XPATH, f'//*[@text="{self._esc(text)}"]')
                     return True
                 if resource_id:
                     self.driver.find_element(AppiumBy.ID, resource_id)
@@ -172,7 +186,7 @@ class MobileDriver:
         def _gone() -> bool:
             try:
                 if text:
-                    self.driver.find_element(AppiumBy.XPATH, f'//*[@text="{text}"]')
+                    self.driver.find_element(AppiumBy.XPATH, f'//*[@text="{self._esc(text)}"]')
                     return False
                 if resource_id:
                     self.driver.find_element(AppiumBy.ID, resource_id)

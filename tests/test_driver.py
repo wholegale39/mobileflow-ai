@@ -57,8 +57,8 @@ class FakeAppiumDriver:
         self.calls.append(("tap", positions))
         return f"tap_{positions}"
 
-    def drag_and_drop(self, sx, sy, ex, ey):
-        self.calls.append(("drag", sx, sy, ex, ey))
+    def drag_and_drop(self, origin_el, destination_el):
+        self.calls.append(("drag", origin_el, destination_el))
         return "dragged"
 
     def get_screenshot_as_base64(self):
