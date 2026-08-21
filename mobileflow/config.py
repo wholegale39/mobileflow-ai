@@ -98,7 +98,8 @@ def check_paths(*paths: str | Path, must_writable: bool = False) -> dict[str, An
     for p in paths:
         p = Path(p).expanduser()
         if must_writable:
-            parent = p.parent if p.is_file() or p.suffix else p
+            # 目标若是已有文件则查其父目录, 否则直接查目标本身
+            parent = p.parent if p.exists() and p.is_file() else p
             parent.mkdir(parents=True, exist_ok=True)
             try:
                 probe = parent / ".mobileflow_write_probe"

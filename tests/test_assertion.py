@@ -96,3 +96,25 @@ def test_assert_network_int_mask():
 def test_assert_unknown_action():
     with pytest.raises(ValueError, match="未知断言"):
         run_assert(_driver(), {"action": "assert_foo"})
+
+
+# ---------- 视觉名称匹配(防误命中) ----------
+
+from mobileflow.assertion import _name_match
+
+
+def test_name_match_exact():
+    assert _name_match("购买", "购买") is True
+
+
+def test_name_match_short_substring_rejected():
+    # "买" 不应误命中 "购买按钮"
+    assert _name_match("买", "购买按钮") is False
+
+
+def test_name_match_segment_in_punct_separated():
+    assert _name_match("购买", "按钮(购买)") is True
+
+
+def test_name_match_contains_rejected():
+    assert _name_match("按钮", "购买按钮") is False

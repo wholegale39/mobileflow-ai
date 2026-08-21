@@ -20,6 +20,11 @@ from typing import Any
 import yaml
 
 
+# 需 target 的动作(可缺省但提示)
+_NEEDS_TARGET = {"click", "long_click", "double_click", "wait", "input"}
+# input 额外需 text
+_NEEDS_TEXT = {"input"}
+
 # 合法动作族（driver.execute_action 支持的全部动作前缀/名）
 _VALID_ACTIONS = {
     "click", "long_click", "double_click", "coordinate_click", "visual_click",
@@ -53,9 +58,12 @@ _PROMPT_TEMPLATE = '''你是移动端自动化测试专家。根据需求生成�
 
 
 def _build_prompt(requirement: str, app: str, actions: str) -> str:
+    # 防提示词注入: 对需求/应用名中的模板占位符做转义, 避免用户输入污染结构
+    esc = lambda s: (s.replace("__REQUIREMENT__", "<REQ>")
+                     .replace("__APP__", "<APP>").replace("__ACTIONS__", "<ACT>"))
     return (_PROMPT_TEMPLATE
-            .replace("__REQUIREMENT__", requirement)
-            .replace("__APP__", app)
+            .replace("__REQUIREMENT__", esc(requirement))
+            .replace("__APP__", esc(app))
             .replace("__ACTIONS__", actions))
 
 
@@ -64,12 +72,12 @@ def generate(requirement: str, llm, *, app: str = "", model: str | None = None) 
 
     Args:
         requirement: 自然语言用例需求。
-        llm: LlmClient 实例。
+        llm: LlmClient 实例（需有 chat_raw 公开方法）。
         app: 被测应用名(可选，写入提示词)。
         model: 覆盖模型(可选)。
     """
     prompt = _build_prompt(requirement, app or "未知", ", ".join(sorted(_VALID_ACTIONS)))
-    raw = llm._chat(prompt, model=model)
+    raw = llm.chat_raw(prompt, model=model)
     if not raw:
         raise ValueError("用例生成失败: LLM 返回空内容")
     skill = _parse(raw)
@@ -95,6 +103,11 @@ def validate(skill: dict[str, Any]) -> dict[str, Any]:
             act = s.get("action") if isinstance(s, dict) else None
             if act not in _VALID_ACTIONS:
                 errors.append(f"步骤{i}: 非法动作 {act}")
+                continue
+            if act in _NEEDS_TARGET and not s.get("target"):
+                errors.append(f"步骤{i}: {act} 缺 target")
+            if act in _NEEDS_TEXT and not s.get("text"):
+                errors.append(f"步骤{i}: input 缺 text")
     # 参数占位一致性: steps 里用的 {x} 都应在 params 声明
     raw = json.dumps(steps, ensure_ascii=False)
     used = set(re.findall(r"\{(\w+)\}", raw))
@@ -116,6 +129,13 @@ def save(skill: dict[str, Any], path: str | Path) -> Path:
     return path
 
 
+def sanitize_filename(name: str) -> str:
+    """把用例名消毒为安全文件名（防路径穿越/非法字符）。"""
+    safe = re.sub(r"[^\w\w\-\u4e00-\u9fff]+", "_", name)  # 保留中文/字母/数字/-/_
+    safe = safe.strip("_") or "case"
+    return safe[:60]  # 限长
+
+
 def generate_and_save(
     requirement: str, llm, *, app: str = "", out_dir: str | Path = "", model: str | None = None
 ) -> Path:
@@ -123,20 +143,26 @@ def generate_and_save(
     skill = generate(requirement, llm, app=app, model=model)
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    return save(skill, out_dir / f"{skill['name']}.yaml")
+    return save(skill, out_dir / f"{sanitize_filename(skill['name'])}.yaml")
 
 
 # ---------- 内部 ----------
 
 def _parse(raw: str) -> dict[str, Any] | None:
     raw = raw.strip()
-    # 容错: 去掉可能的 ```json ... ``` 代码块
-    m = re.search(r"```(?:json)?\s*\n?(.*?)(?:\n?```)?\s*$", raw, re.DOTALL)
-    cand = m.group(1).strip() if m else raw
+    # 容错: 尝试直接从原文解析(最常见情况)
     try:
-        obj = json.loads(cand)
+        obj = json.loads(raw)
         if isinstance(obj, dict):
             return obj
     except json.JSONDecodeError:
         pass
+    # 兜底: 提取 ```json ... ``` 代码块(支持多代码块,逐个尝试)
+    for block in re.findall(r"```(?:json)?\s*\n?(.*?)\n?```", raw, re.DOTALL):
+        try:
+            obj = json.loads(block.strip())
+            if isinstance(obj, dict):
+                return obj
+        except json.JSONDecodeError:
+            continue
     return None

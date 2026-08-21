@@ -49,6 +49,16 @@ class LlmClient:
             raise RuntimeError(f"LLM 返回空 content (finish={resp.choices[0].finish_reason})")
         return content.strip()
 
+    def chat_raw(self, prompt: str, *, model: str | None = None) -> str:
+        """单 prompt 对话（不含 system），供用例生成等场景使用。model 可覆盖。"""
+        resp = self.client.chat.completions.create(
+            model=model or self.model,
+            messages=[{"role": "user", "content": prompt}],
+            reasoning_effort="none",
+            max_tokens=getattr(self, "max_tokens", 1024),
+        )
+        return (resp.choices[0].message.content or "").strip()
+
     def decide_action(self, ui_text: str, task: str, history: list[str] | None = None) -> dict[str, Any]:
         """UI 树文本 + 任务 → 单个 JSON 动作。"""
         history_block = "\n".join(f"- {h}" for h in (history or [])[-8:]) or "（无）"

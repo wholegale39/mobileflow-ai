@@ -9,6 +9,7 @@ from mobileflow.usecase import (
     _VALID_ACTIONS,
     generate,
     generate_and_save,
+    sanitize_filename,
     save,
     validate,
     _parse,
@@ -17,7 +18,7 @@ from mobileflow.usecase import (
 
 def test_validate_ok():
     skill = {"name": "登录", "description": "d", "params": {"user": "u"},
-             "steps": [{"action": "input", "text": "{user}"}, {"action": "assert_text_exists", "text": "欢迎"}]}
+             "steps": [{"action": "input", "target": {"text": "u"}, "text": "{user}"}, {"action": "assert_text_exists", "text": "欢迎"}]}
     assert validate(skill)["ok"] is True
 
 
@@ -29,10 +30,17 @@ def test_validate_invalid_action():
 
 
 def test_validate_undeclared_param():
-    skill = {"name": "x", "params": {}, "steps": [{"action": "input", "text": "{pwd}"}]}
+    skill = {"name": "x", "params": {}, "steps": [{"action": "input", "target": {"text": "u"}, "text": "{pwd}"}]}
     r = validate(skill)
     assert r["ok"] is False
     assert any("未声明" in e for e in r["errors"])
+
+
+def test_validate_click_missing_target():
+    skill = {"name": "x", "params": {}, "steps": [{"action": "click"}]}
+    r = validate(skill)
+    assert r["ok"] is False
+    assert any("缺 target" in e for e in r["errors"])
 
 
 def test_validate_missing_steps():
@@ -55,25 +63,38 @@ def test_parse_invalid_none():
     assert _parse("这不是 json") is None
 
 
+def test_parse_multi_codeblock_picks_first():
+    # 第一个代码块即有效 dict 时返回第一个; 尾部注释不影响
+    raw = "```json\n{\"name\":\"first\",\"steps\":[]}\n```\n```json\n{\"name\":\"second\"}\n```\n尾部"
+    obj = _parse(raw)
+    assert obj == {"name": "first", "steps": []}
+
+
+def test_sanitize_filename_path_traversal():
+    assert sanitize_filename("../../etc/passwd") == "etc_passwd"
+    assert sanitize_filename("冒烟/测试") == "冒烟_测试"
+    assert sanitize_filename("") == "case"
+
+
 def test_generate_uses_llm_and_parses():
     llm = MagicMock()
-    llm._chat.return_value = '{"name":"注册","params":{"p":"pwd"},"steps":[{"action":"input","text":"{p}"},{"action":"done"}]}'
+    llm.chat_raw.return_value = '{"name":"注册","params":{"p":"pwd"},"steps":[{"action":"input","target":{"text":"密码"},"text":"{p}"},{"action":"done"}]}'
     skill = generate("用户注册场景", llm, app="测试App")
     assert skill["name"] == "注册"
-    assert "注册" in llm._chat.call_args[0][0]
+    assert "注册" in llm.chat_raw.call_args[0][0]
     assert validate(skill)["ok"] is True
 
 
 def test_generate_empty_llm_raises():
     llm = MagicMock()
-    llm._chat.return_value = ""
+    llm.chat_raw.return_value = ""
     with pytest.raises(ValueError, match="返回空"):
         generate("x", llm)
 
 
 def test_generate_invalid_json_raises():
     llm = MagicMock()
-    llm._chat.return_value = "随便说点什么"
+    llm.chat_raw.return_value = "随便说点什么"
     with pytest.raises(ValueError, match="未能解析"):
         generate("x", llm)
 
@@ -95,7 +116,7 @@ def test_save_invalid_raises():
 
 def test_generate_and_save_end_to_end(tmp_path):
     llm = MagicMock()
-    llm._chat.return_value = '{"name":"冒烟","params":{},"steps":[{"action":"done"}]}'
+    llm.chat_raw.return_value = '{"name":"冒烟","params":{},"steps":[{"action":"done"}]}'
     p = generate_and_save("基本冒烟测试", llm, out_dir=tmp_path / "cases")
     assert p.exists() and p.suffix == ".yaml"
 

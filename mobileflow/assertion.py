@@ -88,6 +88,17 @@ def _assert_text_contains(driver: WebDriver, action: dict[str, Any]) -> str:
     return f"✓ 断言通过: 「{text}」包含「{contains}」"
 
 
+def _name_match(target: str, element: str) -> bool:
+    """元素名匹配: 全等, 或 target 作为 element 中以中文标点/空格隔开的完整片段。
+
+    避免短串误命中（"买" 不命中 "购买按钮"），但允许 "购买按钮" 命中 "按钮(购买)" 这类含括注。
+    """
+    if target == element:
+        return True
+    # 把 element 按中文标点/括号/空格切分成片段, target 需等于某片段
+    segs = re.split(r"[，。、；：,;:\s()（）\[\]【】]+", element)
+    return target in segs
+
 # ---------- 视觉断言 ----------
 
 def _assert_visible(driver: WebDriver, action: dict[str, Any], vision: VisionChannel) -> str:
@@ -108,8 +119,9 @@ def _assert_visible(driver: WebDriver, action: dict[str, Any], vision: VisionCha
         raise AssertionFailed(f"断言失败: 视觉分析异常 ({e})")
     n = str(name).strip()
     for el in elements:
-        en = str(el.get("name", ""))
-        if en == n or n in en or en in n:
+        en = str(el.get("name", "")).strip()
+        # 严格匹配: 全等 或 用中文停顿/边界隔开的整体词匹配，避免"买"误命中"购买按钮"
+        if _name_match(n, en):
             return f"✓ 视觉断言通过: 屏幕可见「{name}」({el.get('x')},{el.get('y')})"
     raise AssertionFailed(
         f"视觉断言失败: 屏幕未识别到「{name}」"
@@ -128,7 +140,9 @@ def _assert_memory(driver: WebDriver, action: dict[str, Any]) -> str:
         types = driver.get_performance_data_types()
         data = driver.get_performance_data(pkg, "android.memory", 1000)
         # get_performance_data 返回 list[str]，每个元素一行 JSON
-        raw = data[0] if isinstance(data, list) else data
+        raw = data[0] if isinstance(data, list) and data else data
+        if raw is None:
+            raise AssertionFailed("断言失败: 性能数据为空(设备可能不支持性能数据采集)")
         raw = str(raw)
         # data 形如 '{"ss":"...","memUsed":...,"cpuUsed":...}'
         import json as _json
