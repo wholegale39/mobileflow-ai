@@ -43,7 +43,6 @@ def test_parse_elements_skips_bad_items():
 
 # ---------- 视觉通道 key 回退 + describe/analyze 分支 ----------
 
-from mobileflow.vision import VisionChannel
 
 
 def test_vision_api_key_from_own_env(monkeypatch):

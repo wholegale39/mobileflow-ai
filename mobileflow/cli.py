@@ -38,7 +38,8 @@ def cmd_run(args: argparse.Namespace) -> None:
     # 启动即校验配置，失败立即退出，不消耗 LLM token
     try:
         from mobileflow.config import ConfigError, validate_all
-        validate_all(vision_enabled=bool(args.vision and not args.dry_run), strict_key=True)
+        validate_all(vision_enabled=bool(args.vision and not args.dry_run),
+                 strict_key=not args.dry_run)  # dry-run 无真实调用, 不强制 key
     except ConfigError as e:
         print(f"❌ {e}")
         sys.exit(2)

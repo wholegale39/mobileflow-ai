@@ -131,7 +131,8 @@ class Agent:
     def _llm_loop(self, task: str) -> dict[str, Any]:
         actions: list[dict[str, Any]] = []
         for step in range(1, self.max_steps + 1):
-            ui_text = compress_page_source(self.driver.page_source())
+            ui_text = compress_page_source(self.driver.page_source(), include_bounds=False)
+            # 哈希用去 bounds 的语义文本, 避免键盘/动画导致的 bounds 微动误判 stuck
             print(f"\n—— 第 {step} 步 ——")
 
             if self._check_stuck(ui_text):
@@ -228,7 +229,9 @@ class Agent:
     # ---------- 工具 ----------
 
     def _ui_hash(self) -> str:
-        return hashlib.md5(self.driver.page_source().encode()).hexdigest()
+        # 用压缩后语义文本做哈希, 且排除 bounds(bounds 随键盘/动画微动, 会导致误判 stuck)
+        txt = compress_page_source(self.driver.page_source(), include_bounds=False)
+        return hashlib.md5(txt.encode()).hexdigest()
 
     def reset_stuck(self) -> None:
         """重置停滞检测状态。子任务切换时调用，防止 streak 跨子任务连续误判。"""

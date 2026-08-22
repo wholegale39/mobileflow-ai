@@ -49,13 +49,17 @@ class LlmClient:
             raise RuntimeError(f"LLM 返回空 content (finish={resp.choices[0].finish_reason})")
         return content.strip()
 
-    def chat_raw(self, prompt: str, *, model: str | None = None) -> str:
-        """单 prompt 对话（不含 system），供用例生成等场景使用。model 可覆盖。"""
+    def chat_raw(self, prompt: str, *, model: str | None = None, max_tokens: int | None = None) -> str:
+        """单 prompt 对话（不含 system），供用例生成等场景使用。model/max_tokens 可覆盖。
+
+        注：默认 self.max_tokens=*** 决策场景控配额），用例生成等需要较长输出的场景
+        应显式传入 max_tokens，否则返回 JSON 会被截断导致解析失败。
+        """
         resp = self.client.chat.completions.create(
             model=model or self.model,
             messages=[{"role": "user", "content": prompt}],
             reasoning_effort="none",
-            max_tokens=getattr(self, "max_tokens", 1024),
+            max_tokens=max_tokens if max_tokens is not None else self.max_tokens,
         )
         return (resp.choices[0].message.content or "").strip()
 

@@ -10,12 +10,12 @@ from __future__ import annotations
 import re
 
 
-def compress_page_source(xml: str, max_elements: int = 60) -> str:
+def compress_page_source(xml: str, max_elements: int = 60, *, include_bounds: bool = True) -> str:
     """XML page source → 压缩文本列表。"""
     nodes = _parse_nodes(xml)
     lines = []
     for i, node in enumerate(nodes[:max_elements]):
-        lines.append(_format_node(i, node))
+        lines.append(_format_node(i, node, include_bounds=include_bounds))
     if len(nodes) > max_elements:
         lines.append(f"...（还有 {len(nodes) - max_elements} 个元素未显示）")
     return "\n".join(lines) if lines else "（空屏幕）"
@@ -41,7 +41,7 @@ def _parse_attrs(raw: str) -> dict[str, str]:
     return attrs
 
 
-def _format_node(index: int, node: dict[str, str]) -> str:
+def _format_node(index: int, node: dict[str, str], *, include_bounds: bool = True) -> str:
     """单节点压缩格式：{index} [text] content-desc (resource-id) {clickable}@bounds"""
     text = node.get("text", "").strip()
     desc = node.get("content-desc", "").strip()
@@ -57,6 +57,6 @@ def _format_node(index: int, node: dict[str, str]) -> str:
         parts.append(f"({rid.split('/')[-1]})")
     if clickable:
         parts.append("{可点}")
-    if bounds:
+    if include_bounds and bounds:
         parts.append(bounds)
     return " ".join(parts)

@@ -115,8 +115,11 @@ class MobileDriver:
             raise ValueError(f"未知动作: {act}")
 
         # 仅对幂等/可恢复动作启用重试；input/drag/swipe/done 等非幂等或无状态动作不重试
-        _NON_RETRYABLE = {"input", "drag", "swipe", "done"}
-        max_attempts = 1 if act in _NON_RETRYABLE else action.get("retry", self.default_retry)
+        _NON_RETRYABLE = {"input", "drag", "swipe", "done", "assert_"}
+        if act.startswith("assert_"):
+            max_attempts = 1  # 断言失败是确定性结果, 盲目重试无意义且拖慢
+        else:
+            max_attempts = 1 if act in _NON_RETRYABLE else action.get("retry", self.default_retry)
         return retry_action(_exec, max_attempts=max_attempts, on_retry=lambda n, e: print(f"  ⚠️ 重试 {n}: {e}"))
 
     # ---------- 长按/双击 ----------

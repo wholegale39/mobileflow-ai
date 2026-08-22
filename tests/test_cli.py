@@ -1,9 +1,9 @@
 """测试 cli 入口：参数解析、报告产出、配置校验拦截。"""
 from __future__ import annotations
 
-import json
-import io
 import contextlib
+import io
+import json
 
 from mobileflow import cli as cli_mod
 
@@ -59,11 +59,11 @@ def test_cli_run_no_report_no_files(monkeypatch):
 
 
 def test_cli_run_config_fail_exits2(monkeypatch):
-    """配置校验失败应 exit 2, 且提示中文错误。"""
+    """配置校验失败应 exit 2, 且提示中文错误（非 dry-run 模式强制 key）。"""
     monkeypatch.setenv("MOBILEFLOW_API_KEY", "dummybadkey")
     monkeypatch.delenv("MOBILEFLOW_VISION_API_KEY", raising=False)
     monkeypatch.delenv("AGNES_API_KEY", raising=False)
-    out, rc = _run(["run", "x", "--dry-run", "--no-memory", "--no-skills"], monkeypatch)
+    out, rc = _run(["run", "x", "--no-memory", "--no-skills"], monkeypatch)
     assert rc == 2
     assert "配置校验失败" in out
 

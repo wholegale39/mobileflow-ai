@@ -105,8 +105,11 @@ import numpy as np
 
 
 def _ngrams(text: str, n: int = 2) -> set[str]:
-    """字符 n-gram（对中文天然有效，无需分词）。"""
-    return {text[i : i + n] for i in range(len(text) - n + 1)}
+    """字符 n-gram（对中文天然有效，无需分词）。短文本自动退化到较小的 n，避免空集。"""
+    if not text:
+        return set()
+    effective_n = min(n, len(text))
+    return {text[i : i + effective_n] for i in range(len(text) - effective_n + 1)}
 
 
 class MemoryIndex:

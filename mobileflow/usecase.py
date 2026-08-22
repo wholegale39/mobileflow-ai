@@ -76,7 +76,7 @@ def generate(requirement: str, llm, *, app: str = "", model: str | None = None) 
         model: 覆盖模型(可选)。
     """
     prompt = _build_prompt(requirement, app or "未知", ", ".join(sorted(_VALID_ACTIONS)))
-    raw = llm.chat_raw(prompt, model=model)
+    raw = llm.chat_raw(prompt, model=model, max_tokens=1024)
     if not raw:
         raise ValueError("用例生成失败: LLM 返回空内容")
     skill = _parse(raw)
