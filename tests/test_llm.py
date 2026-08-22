@@ -79,6 +79,9 @@ class TestLlmClientInit:
         monkeypatch.delenv("MOBILEFLOW_BASE_URL", raising=False)
         monkeypatch.delenv("MOBILEFLOW_API_KEY", raising=False)
         monkeypatch.delenv("MOBILEFLOW_MODEL", raising=False)
+        # 注入假 key 仅让 openai 客户端能实例化（测试不发起真实调用）
+        monkeypatch.setenv("MOBILEFLOW_API_KEY", "sk-test-fake-for-ci")
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test-fake-for-ci")
         client = LlmClient()
         assert client.model == "glm-5.2"
         assert client.max_tokens == 300
@@ -95,6 +98,8 @@ class TestDecideAction:
             return '{"action": "done", "summary": "test"}'
 
         monkeypatch.setattr(LlmClient, "chat", mock_chat)
+        monkeypatch.setenv("MOBILEFLOW_API_KEY", "sk-test-fake-for-ci")
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test-fake-for-ci")
         client = LlmClient()
         client.decide_action("UI", "任务")
 
