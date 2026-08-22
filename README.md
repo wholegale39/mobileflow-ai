@@ -1,5 +1,8 @@
 # MobileFlow AI
 
+![License: MIT](https://img.shields.io/badge/license-MIT-green) ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue) ![Tests](https://img.shields.io/badge/tests-193%20passed-brightgreen)
+[![CI](https://github.com/wholegale39/mobileflow-ai/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/wholegale39/mobileflow-ai/actions/workflows/ci.yml)
+
 轻量级、LLM 驱动的移动端自动化框架。用自然语言描述任务，LLM 决策，Appium 执行；内置记忆/RAG、失败自愈、断言、用例生成等工程化能力。**零重型依赖**，保持"轻框架、LLM 原生决策"定位。
 
 - **规模**：约 3000 行核心代码 · **193 用例 · 84% 覆盖率** · 核心代码 ruff 零告警
@@ -62,27 +65,32 @@ tests/               193 用例
 - **商汤渠道约束适配**：`reasoning_effort=none` 直出；流式生成（`tools/gen_code.py`）绕开 max_tokens 配额；大输出分块防 429
 - **RAG 零新依赖**：纯 numpy 字符 n-gram + TF-IDF + 余弦，对中文天然有效
 
-## 快速开始
+## 安装 & 快速开始
 
 ```bash
-# 1. 装依赖（本框架自带 venv 环境用 uv）
-uv pip install --python /opt/hermes/.venv/bin/python3 -e .
+# 1. 克隆 + 虚拟环境（Python 3.10+）
+git clone https://github.com/wholegale39/mobileflow-ai.git
+cd mobileflow-ai
+python3 -m venv .venv && source .venv/bin/activate
 
-# 2. 配置模型（商汤 GLM-5.2 示例）
+# 2. 安装（自动拉取 appium-python-client / openai / PyYAML / numpy）
+pip install -e .
+
+# 3. 配置模型（商汤 GLM-5.2 示例；缺 key 会在启动时被拦截）
 export MOBILEFLOW_BASE_URL=https://token.sensenova.cn/v1
 export MOBILEFLOW_API_KEY=sk-xxx
 export MOBILEFLOW_MODEL=glm-5.2
 
-# 3. 起 Appium 服务
+# 4. 起 Appium 服务
 appium --base-path /wd/hub
 
-# 4. 跑任务
+# 5. 跑任务
 mobileflow run "打开微信，给文件传输助手发一条'你好'"     # 真实设备
 mobileflow run "打开微信" --dry-run                       # 无设备验证决策链路
 mobileflow run "打开设置" --vision --trace /tmp/trace.jsonl   # 视觉+轨迹
 mobileflow run "..." --report ./report                    # 工程化报告
 
-# 5. 技能/记忆管理
+# 6. 技能/记忆管理
 mobileflow skills list
 mobileflow skills add my_skill.yaml
 mobileflow memory          # 记忆/RAG 统计
@@ -132,7 +140,10 @@ mobileflow memory          # 记忆/RAG 统计
 pytest                       # 193 用例
 pytest --cov=mobileflow      # 覆盖率
 ruff check mobileflow        # lint（核心代码零告警）
+python -m build --wheel      # 构建 wheel
 ```
+
+**CI（GitHub Actions）**：每次 push / PR 自动跑 Python 3.10/3.11/3.12/3.13 矩阵 —— ruff lint + pytest（覆盖门槛 75%）+ wheel 构建，任一失败则红灯。
 
 ## 质量闭环（开发工具）
 
